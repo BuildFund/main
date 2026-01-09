@@ -34,6 +34,14 @@ function Layout({ children, role, onLogout }) {
       { path: '/admin/private-equity', label: 'Private Equity', icon: '💼' },
       { path: '/account/settings', label: 'Account Settings', icon: '⚙️' },
     ],
+    Consultant: [
+      { path: '/consultant/dashboard', label: 'Dashboard', icon: '📊' },
+      { path: '/consultant/services', label: 'Service Opportunities', icon: '🔍' },
+      { path: '/consultant/quotes', label: 'My Quotes', icon: '💰' },
+      { path: '/consultant/appointments', label: 'Appointments', icon: '📅' },
+      { path: '/consultant/profile', label: 'Profile', icon: '👤' },
+      { path: '/account/settings', label: 'Account Settings', icon: '⚙️' },
+    ],
   };
 
   const navItems = navigation[role] || [];

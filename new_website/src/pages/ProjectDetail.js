@@ -9,12 +9,20 @@ function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [project, setProject] = useState(null);
+  const [savedProducts, setSavedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingSavedProducts, setLoadingSavedProducts] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     loadProject();
   }, [id]);
+
+  useEffect(() => {
+    if (project) {
+      loadSavedProducts();
+    }
+  }, [project]);
 
   async function loadProject() {
     setLoading(true);
@@ -27,6 +35,20 @@ function ProjectDetail() {
       setError('Failed to load project details');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadSavedProducts() {
+    setLoadingSavedProducts(true);
+    try {
+      const res = await api.get(`/api/products/favourites/?project_id=${id}`);
+      const favs = res.data?.results || res.data || [];
+      setSavedProducts(favs);
+    } catch (err) {
+      console.error('Failed to load saved products:', err);
+      // Don't show error, just continue without saved products
+    } finally {
+      setLoadingSavedProducts(false);
     }
   }
 
@@ -214,6 +236,70 @@ function ProjectDetail() {
               </div>
             </div>
           </div>
+
+          {/* Saved Products for this Project */}
+          {savedProducts.length > 0 && (
+            <div style={commonStyles.card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.lg }}>
+                <h3 style={{ margin: 0 }}>Saved Products for this Project</h3>
+                <Badge variant="warning">{savedProducts.length} saved</Badge>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
+                {savedProducts.map((fav) => (
+                  <div 
+                    key={fav.id}
+                    style={{
+                      padding: theme.spacing.md,
+                      border: `1px solid ${theme.colors.gray200}`,
+                      borderRadius: theme.borderRadius.md,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => navigate(`/borrower/products/${fav.product?.id}?project_id=${id}`)}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = theme.colors.gray50;
+                      e.currentTarget.style.borderColor = theme.colors.primary;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.borderColor = theme.colors.gray200;
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                      <div style={{ flex: 1 }}>
+                        <h4 style={{ margin: `0 0 ${theme.spacing.xs} 0`, fontSize: theme.typography.fontSize.lg }}>
+                          {fav.product?.name || 'Product'}
+                        </h4>
+                        <p style={{ margin: `${theme.spacing.xs} 0`, color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.sm }}>
+                          <strong>Lender:</strong> {fav.product?.lender_details?.organisation_name || 'N/A'}
+                        </p>
+                        <p style={{ margin: `${theme.spacing.xs} 0`, color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.sm }}>
+                          <strong>Loan Range:</strong> £{parseFloat(fav.product?.min_loan_amount || 0).toLocaleString()} - £{parseFloat(fav.product?.max_loan_amount || 0).toLocaleString()}
+                        </p>
+                        <p style={{ margin: `${theme.spacing.xs} 0`, color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.sm }}>
+                          <strong>Interest Rate:</strong> {fav.product?.interest_rate_min}% - {fav.product?.interest_rate_max}%
+                        </p>
+                      </div>
+                      <Badge variant="warning" style={{ marginLeft: theme.spacing.md }}>⭐ Saved</Badge>
+                    </div>
+                    {fav.notes && (
+                      <div style={{ marginTop: theme.spacing.sm, paddingTop: theme.spacing.sm, borderTop: `1px solid ${theme.colors.gray200}` }}>
+                        <p style={{ margin: 0, fontSize: theme.typography.fontSize.sm, color: theme.colors.textSecondary, fontStyle: 'italic' }}>
+                          "{fav.notes}"
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: theme.spacing.md, paddingTop: theme.spacing.md, borderTop: `1px solid ${theme.colors.gray200}` }}>
+                <Link to={`/borrower/matches?project_id=${id}`} style={{ textDecoration: 'none' }}>
+                  <Button variant="outline" style={{ width: '100%' }}>
+                    View All Matches for this Project
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Sidebar */}

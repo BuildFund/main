@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import BorrowerDashboard from './BorrowerDashboard';
 import LenderDashboard from './LenderDashboard';
@@ -20,6 +21,7 @@ function Dashboard({ role, onLogout }) {
       setOnboardingProgress(res.data);
       
       // Show chatbot if onboarding is not complete
+      // This works for both Borrower and Lender roles
       if (!res.data.is_complete && res.data.completion_percentage < 100) {
         // Show after a short delay to not be intrusive
         setTimeout(() => {
@@ -28,6 +30,7 @@ function Dashboard({ role, onLogout }) {
       }
     } catch (err) {
       console.error('Failed to check onboarding progress:', err);
+      // If progress check fails, still allow manual chatbot trigger
     }
   }
 
@@ -45,6 +48,9 @@ function Dashboard({ role, onLogout }) {
     }
     if (role === 'Admin') {
       return <AdminDashboard />;
+    }
+    if (role === 'Consultant') {
+      return <Navigate to="/consultant/dashboard" />;
     }
     
     // Fallback for unknown roles

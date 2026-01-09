@@ -37,6 +37,7 @@ function Login({ onLogin }) {
       if (roles.includes('Admin')) userRole = 'Admin';
       else if (roles.includes('Lender')) userRole = 'Lender';
       else if (roles.includes('Borrower')) userRole = 'Borrower';
+      else if (roles.includes('Consultant')) userRole = 'Consultant';
       
       localStorage.setItem('role', userRole);
       localStorage.setItem('username', meResp.data.username || username);

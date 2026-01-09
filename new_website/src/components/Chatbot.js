@@ -97,11 +97,16 @@ function Chatbot({ onComplete, onClose }) {
       setCurrentQuestion(res.data.question);
       setProgress(res.data.progress);
       
-      // Add bot response
+      // Add bot response with progress indicator
       if (res.data.question?.question) {
+        const questionText = res.data.question.question;
+        const progressInfo = res.data.question.progress !== undefined 
+          ? `\n\n📊 Progress: ${res.data.question.progress}% complete (Step ${res.data.question.step_number || ''} of ${res.data.question.total_steps || ''})`
+          : '';
+        
         setMessages(prev => [...prev, {
           type: 'bot',
-          message: res.data.question.question,
+          message: questionText + progressInfo,
           timestamp: new Date().toISOString(),
         }]);
       }
@@ -144,14 +149,48 @@ function Chatbot({ onComplete, onClose }) {
       formData.append('files', file);
     });
 
-    // Upload files to documents API
-    api.post('/api/documents/upload/', formData, {
+    // Upload files to onboarding documents API
+    api.post('/api/onboarding/upload_documents/', formData, {
       headers: { 
         'Content-Type': 'multipart/form-data',
       },
     })
-      .then(() => {
-        sendMessage('Files uploaded', currentQuestion?.step);
+      .then((res) => {
+        const uploadedCount = res.data.documents?.length || files.length;
+        const docStatus = res.data.document_status;
+        
+        // Add success message
+        setMessages(prev => [...prev, {
+          type: 'user',
+          message: `Uploaded ${uploadedCount} file(s)`,
+          timestamp: new Date().toISOString(),
+        }]);
+        
+        // Check if all documents are uploaded
+        if (docStatus && docStatus.all_uploaded) {
+          setMessages(prev => [...prev, {
+            type: 'bot',
+            message: '✅ Excellent! All required documents have been uploaded. You can now proceed to review your application.',
+            timestamp: new Date().toISOString(),
+          }]);
+          // Refresh to get updated question
+          setTimeout(() => {
+            sendMessage('All documents uploaded', currentQuestion?.step);
+          }, 1000);
+        } else {
+          // Still missing documents
+          const missingCount = docStatus?.missing_documents?.length || 0;
+          setMessages(prev => [...prev, {
+            type: 'bot',
+            message: `✅ Files uploaded successfully! However, you still need to upload ${missingCount} more required document(s). Please continue uploading the remaining documents.`,
+            timestamp: new Date().toISOString(),
+          }]);
+          // Refresh to get updated question showing what's still needed
+          setTimeout(() => {
+            sendMessage('Continue', currentQuestion?.step);
+          }, 1000);
+        }
+        
         setUploading(false);
       })
       .catch(err => {

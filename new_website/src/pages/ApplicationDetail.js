@@ -22,14 +22,39 @@ function ApplicationDetail() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [statusUpdateForm, setStatusUpdateForm] = useState({ status: '', feedback: '' });
-  const [docUploadForm, setDocUploadForm] = useState({ description: '' });
+  const [docUploadForm, setDocUploadForm] = useState({ description: '', document_type_id: '', is_required: false });
   const [dragActive, setDragActive] = useState(false);
+  const [documentTypes, setDocumentTypes] = useState([]);
+  const [underwriting, setUnderwriting] = useState(null);
+  const [givingConsent, setGivingConsent] = useState(false);
   const role = localStorage.getItem('role');
   const isLender = role === 'Lender';
+  const isBorrower = role === 'Borrower';
 
   useEffect(() => {
     loadApplication();
+    loadDocumentTypes();
+    loadUnderwriting();
   }, [id]);
+  
+  async function loadDocumentTypes() {
+    try {
+      const res = await api.get('/api/documents/types/?loan_type=business_finance');
+      setDocumentTypes(res.data || []);
+    } catch (err) {
+      console.error('Failed to load document types:', err);
+    }
+  }
+  
+  async function loadUnderwriting() {
+    try {
+      const res = await api.get(`/api/applications/${id}/underwriting/`);
+      setUnderwriting(res.data);
+    } catch (err) {
+      // Underwriting may not exist yet
+      console.log('No underwriting assessment available');
+    }
+  }
 
   async function loadApplication() {
     setLoading(true);
@@ -45,6 +70,11 @@ function ApplicationDetail() {
       setStatusHistory(historyRes.data || []);
       setDocuments(docsRes.data || []);
       setMessages(messagesRes.data || []);
+      
+      // Load underwriting if lender
+      if (role === 'Lender') {
+        loadUnderwriting();
+      }
     } catch (err) {
       console.error('ApplicationDetail loadApplication error:', err);
       setError('Failed to load application details');
@@ -62,13 +92,18 @@ function ApplicationDetail() {
       formData.append('files', file);
     });
     formData.append('description', docUploadForm.description);
+    if (docUploadForm.document_type_id) {
+      formData.append('document_type_id', docUploadForm.document_type_id);
+    }
+    formData.append('is_required', docUploadForm.is_required);
     
     try {
       await api.post(`/api/applications/${id}/documents/`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       await loadApplication();
-      setDocUploadForm({ description: '' });
+      await loadUnderwriting();
+      setDocUploadForm({ description: '', document_type_id: '', is_required: false });
     } catch (err) {
       console.error('Document upload error:', err);
       alert('Failed to upload document: ' + (err.response?.data?.error || err.message));
@@ -412,6 +447,66 @@ function ApplicationDetail() {
                     Message {role === 'Borrower' ? 'Lender' : 'Borrower'}
                   </Button>
                 </Link>
+                
+                {/* Lender: View Borrower Information (if accepted and consent given) */}
+                {isLender && application.status === 'accepted' && application.borrower_consent_given && (
+                  <Link 
+                    to={`/lender/applications/${application.id}/borrower-info`}
+                    style={{ textDecoration: 'none' }}
+                  >
+                    <Button variant="secondary" style={{ width: '100%' }}>
+                      📋 View Borrower Information
+                    </Button>
+                  </Link>
+                )}
+                
+                {/* Borrower: Give Consent (if application is accepted) */}
+                {isBorrower && application.status === 'accepted' && !application.borrower_consent_given && (
+                  <Button 
+                    variant="primary" 
+                    style={{ width: '100%' }}
+                    onClick={async () => {
+                      setGivingConsent(true);
+                      try {
+                        await api.post(`/api/applications/${id}/give_consent/`);
+                        await loadApplication();
+                        alert('Consent given successfully. The lender can now view your information.');
+                      } catch (err) {
+                        console.error('Failed to give consent:', err);
+                        alert('Failed to give consent: ' + (err.response?.data?.error || err.message));
+                      } finally {
+                        setGivingConsent(false);
+                      }
+                    }}
+                    disabled={givingConsent}
+                  >
+                    {givingConsent ? 'Processing...' : '✓ Give Consent to Share Information'}
+                  </Button>
+                )}
+                
+                {/* Borrower: Consent Status */}
+                {isBorrower && application.status === 'accepted' && (
+                  <div style={{
+                    padding: theme.spacing.md,
+                    background: application.borrower_consent_given ? theme.colors.successLight : theme.colors.warningLight,
+                    borderRadius: theme.borderRadius.md,
+                    fontSize: theme.typography.fontSize.sm,
+                  }}>
+                    <p style={{ margin: 0, fontWeight: theme.typography.fontWeight.semibold }}>
+                      {application.borrower_consent_given ? '✓ Consent Given' : '⚠️ Consent Required'}
+                    </p>
+                    <p style={{ margin: `${theme.spacing.xs} 0 0`, fontSize: theme.typography.fontSize.xs }}>
+                      {application.borrower_consent_given 
+                        ? 'Lender can view your information'
+                        : 'Give consent to allow lender to view your information'}
+                    </p>
+                    {application.borrower_consent_given && application.borrower_consent_given_at && (
+                      <p style={{ margin: `${theme.spacing.xs} 0 0`, fontSize: theme.typography.fontSize.xs, color: theme.colors.textMuted }}>
+                        Given on {new Date(application.borrower_consent_given_at).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -452,8 +547,41 @@ function ApplicationDetail() {
 
       {activeTab === 'documents' && (
         <div>
+          {/* AI Underwriting Assessment (for lenders) */}
+          {isLender && underwriting && (
+            <div style={{ ...commonStyles.card, marginBottom: theme.spacing.lg, background: theme.colors.infoLight }}>
+              <h2 style={{ margin: `0 0 ${theme.spacing.md} 0` }}>AI Underwriting Assessment</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: theme.spacing.md, marginBottom: theme.spacing.md }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: theme.typography.fontSize.sm, color: theme.colors.textSecondary }}>Risk Score</p>
+                  <p style={{ margin: 0, fontSize: theme.typography.fontSize['2xl'], fontWeight: theme.typography.fontWeight.bold }}>
+                    {underwriting.risk_score || 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: theme.typography.fontSize.sm, color: theme.colors.textSecondary }}>Recommendation</p>
+                  <Badge variant={underwriting.recommendation === 'approve' ? 'success' : underwriting.recommendation === 'decline' ? 'error' : 'warning'}>
+                    {underwriting.recommendation || 'Pending'}
+                  </Badge>
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: theme.typography.fontSize.sm, color: theme.colors.textSecondary }}>Documents Valid</p>
+                  <p style={{ margin: 0, fontSize: theme.typography.fontSize.lg }}>
+                    {underwriting.documents_valid || 0} / {underwriting.documents_analyzed || 0}
+                  </p>
+                </div>
+              </div>
+              {underwriting.summary && (
+                <p style={{ margin: 0, fontSize: theme.typography.fontSize.sm }}>{underwriting.summary}</p>
+              )}
+            </div>
+          )}
+
           <div style={{ ...commonStyles.card, marginBottom: theme.spacing.lg }}>
-            <h2 style={{ margin: `0 0 ${theme.spacing.lg} 0` }}>Shared Documents</h2>
+            <h2 style={{ margin: `0 0 ${theme.spacing.lg} 0` }}>Upload Documents</h2>
+            <p style={{ color: theme.colors.textSecondary, marginBottom: theme.spacing.lg }}>
+              Upload required documents for your loan application. Documents will be automatically validated and assessed.
+            </p>
             
             {/* Upload Area */}
             <div
@@ -480,32 +608,67 @@ function ApplicationDetail() {
                 style={{ display: 'none' }}
                 onChange={(e) => handleDocumentUpload(e.target.files)}
               />
-              <div style={{ fontSize: '32px', marginBottom: theme.spacing.sm }}>📎</div>
+              <div style={{ fontSize: '48px', marginBottom: theme.spacing.sm }}>📎</div>
+              <p style={{ margin: 0, fontSize: theme.typography.fontSize.lg, fontWeight: theme.typography.fontWeight.semibold, marginBottom: theme.spacing.xs }}>
+                Drag and drop files here
+              </p>
               <p style={{ margin: 0, color: theme.colors.textSecondary }}>
-                Drag and drop files here or click to browse
+                or click to browse • PDF, Images, Word, Excel
               </p>
             </div>
 
-            <Input
-              label="Document Description (Optional)"
-              name="description"
-              value={docUploadForm.description}
-              onChange={(e) => setDocUploadForm({ ...docUploadForm, description: e.target.value })}
-              placeholder="e.g., Proof of income, Property valuation"
-            />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: theme.spacing.md, marginBottom: theme.spacing.md }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: theme.spacing.xs, fontWeight: theme.typography.fontWeight.medium }}>
+                  Document Type
+                </label>
+                <Select
+                  value={docUploadForm.document_type_id}
+                  onChange={(e) => setDocUploadForm({ ...docUploadForm, document_type_id: e.target.value })}
+                  style={{ width: '100%' }}
+                >
+                  <option value="">Select document type...</option>
+                  {documentTypes.map(dt => (
+                    <option key={dt.id} value={dt.id}>
+                      {dt.name} {dt.is_required && '(Required)'}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: theme.spacing.xs, fontWeight: theme.typography.fontWeight.medium }}>
+                  Description (Optional)
+                </label>
+                <Input
+                  name="description"
+                  value={docUploadForm.description}
+                  onChange={(e) => setDocUploadForm({ ...docUploadForm, description: e.target.value })}
+                  placeholder="e.g., Q1 2024 Bank Statement"
+                />
+              </div>
+            </div>
 
             {uploadingDoc && (
-              <p style={{ color: theme.colors.textSecondary, marginTop: theme.spacing.sm }}>
-                Uploading...
-              </p>
+              <div style={{ padding: theme.spacing.md, background: theme.colors.infoLight, borderRadius: theme.borderRadius.md, marginBottom: theme.spacing.md }}>
+                <p style={{ margin: 0, color: theme.colors.info }}>
+                  ⏳ Uploading and validating documents...
+                </p>
+              </div>
             )}
           </div>
 
           {/* Documents List */}
           <div style={commonStyles.card}>
-            <h3 style={{ margin: `0 0 ${theme.spacing.lg} 0` }}>Uploaded Documents</h3>
+            <h3 style={{ margin: `0 0 ${theme.spacing.lg} 0` }}>Uploaded Documents ({documents.length})</h3>
             {documents.length === 0 ? (
-              <p style={{ color: theme.colors.textSecondary }}>No documents uploaded yet.</p>
+              <div style={{ textAlign: 'center', padding: theme.spacing.xl }}>
+                <p style={{ color: theme.colors.textSecondary, marginBottom: theme.spacing.md }}>
+                  No documents uploaded yet.
+                </p>
+                <p style={{ color: theme.colors.textMuted, fontSize: theme.typography.fontSize.sm }}>
+                  Required documents: Passport/ID, Utility Bill, Bank Statements, Company Accounts
+                </p>
+              </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.md }}>
                 {documents.map(doc => (
@@ -513,28 +676,70 @@ function ApplicationDetail() {
                     padding: theme.spacing.md,
                     border: `1px solid ${theme.colors.gray200}`,
                     borderRadius: theme.borderRadius.md,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
+                    background: doc.validation_status === 'valid' ? theme.colors.successLight : 
+                               doc.validation_status === 'invalid' ? theme.colors.errorLight : 
+                               theme.colors.gray50,
                   }}>
-                    <div>
-                      <p style={{ margin: 0, fontWeight: theme.typography.fontWeight.semibold }}>
-                        {doc.file_name}
-                      </p>
-                      {doc.description && (
-                        <p style={{ margin: `${theme.spacing.xs} 0 0`, fontSize: theme.typography.fontSize.sm, color: theme.colors.textSecondary }}>
-                          {doc.description}
-                        </p>
-                      )}
-                      <p style={{ margin: `${theme.spacing.xs} 0 0`, fontSize: theme.typography.fontSize.xs, color: theme.colors.textMuted }}>
-                        Uploaded by {doc.uploaded_by} on {new Date(doc.uploaded_at).toLocaleDateString()}
-                      </p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: theme.spacing.sm }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.xs }}>
+                          <p style={{ margin: 0, fontWeight: theme.typography.fontWeight.semibold }}>
+                            {doc.file_name}
+                          </p>
+                          {doc.document_type && (
+                            <Badge variant="info" style={{ fontSize: theme.typography.fontSize.xs }}>
+                              {doc.document_type}
+                            </Badge>
+                          )}
+                          {doc.is_required && (
+                            <Badge variant="warning" style={{ fontSize: theme.typography.fontSize.xs }}>
+                              Required
+                            </Badge>
+                          )}
+                        </div>
+                        {doc.description && (
+                          <p style={{ margin: `${theme.spacing.xs} 0`, fontSize: theme.typography.fontSize.sm, color: theme.colors.textSecondary }}>
+                            {doc.description}
+                          </p>
+                        )}
+                        <div style={{ display: 'flex', gap: theme.spacing.md, marginTop: theme.spacing.xs }}>
+                          <span style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.textMuted }}>
+                            {(doc.file_size / 1024).toFixed(2)} KB
+                          </span>
+                          <span style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.textMuted }}>
+                            Uploaded by {doc.uploaded_by} • {new Date(doc.uploaded_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: theme.spacing.xs }}>
+                        {doc.validation_status && (
+                          <Badge 
+                            variant={doc.validation_status === 'valid' ? 'success' : doc.validation_status === 'invalid' ? 'error' : 'warning'}
+                          >
+                            {doc.validation_status === 'valid' ? '✓ Valid' : 
+                             doc.validation_status === 'invalid' ? '✗ Invalid' : 
+                             '⏳ Validating'}
+                          </Badge>
+                        )}
+                        {doc.validation_score !== null && doc.validation_score !== undefined && (
+                          <span style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.textSecondary }}>
+                            Score: {doc.validation_score}/100
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'center' }}>
-                      <span style={{ fontSize: theme.typography.fontSize.sm, color: theme.colors.textSecondary }}>
-                        {(doc.file_size / 1024).toFixed(2)} KB
-                      </span>
-                    </div>
+                    {doc.validation_notes && (
+                      <div style={{ 
+                        marginTop: theme.spacing.sm, 
+                        padding: theme.spacing.xs, 
+                        background: theme.colors.white,
+                        borderRadius: theme.borderRadius.sm,
+                        fontSize: theme.typography.fontSize.xs,
+                        color: theme.colors.textSecondary 
+                      }}>
+                        {doc.validation_notes}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

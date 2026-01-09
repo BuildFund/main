@@ -16,10 +16,37 @@ function Documents() {
     setError(null);
     try {
       const res = await api.get('/api/documents/');
-      setDocuments(res.data || []);
+      // Handle both array and paginated responses
+      const docs = res.data?.results || res.data || [];
+      setDocuments(docs);
     } catch (err) {
       console.error('Documents loadDocuments error:', err);
-      setError('Failed to load documents');
+      console.error('Error details:', {
+        message: err.message,
+        response: err.response,
+        status: err.response?.status,
+      });
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to load documents';
+      if (err.response) {
+        if (err.response.status === 401 || err.response.status === 403) {
+          errorMessage = 'Authentication failed. Please log in again.';
+          // Clear invalid token and redirect
+          localStorage.removeItem('token');
+          localStorage.removeItem('role');
+          window.location.href = '/login';
+          return;
+        }
+        errorMessage = err.response.data?.detail || 
+                      err.response.data?.error || 
+                      `Server error: ${err.response.status}`;
+      } else if (err.request) {
+        errorMessage = 'Network Error: Cannot connect to backend server. Please ensure the Django server is running on http://localhost:8000';
+      } else {
+        errorMessage = err.message || 'Unknown error';
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

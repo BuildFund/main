@@ -31,14 +31,36 @@ function LenderDashboard({ onboardingProgress, onStartOnboarding }) {
     setLoading(true);
     setError(null);
     try {
-      const productsRes = await api.get('/api/products/');
-      const products = productsRes.data || [];
+      // Load products (required)
+      let products = [];
+      try {
+        const productsRes = await api.get('/api/products/');
+        products = productsRes.data || [];
+      } catch (err) {
+        console.error('Failed to load products:', err);
+        throw new Error(`Failed to load products: ${err.response?.data?.detail || err.message || 'Unknown error'}`);
+      }
       
-      const applicationsRes = await api.get('/api/applications/');
-      const applications = applicationsRes.data || [];
+      // Load applications (required)
+      let applications = [];
+      try {
+        const applicationsRes = await api.get('/api/applications/');
+        applications = applicationsRes.data || [];
+      } catch (err) {
+        console.error('Failed to load applications:', err);
+        throw new Error(`Failed to load applications: ${err.response?.data?.detail || err.message || 'Unknown error'}`);
+      }
       
-      const investmentsRes = await api.get('/api/private-equity/investments/');
-      const investments = investmentsRes.data || [];
+      // Load investments (optional - don't fail if this fails)
+      let investments = [];
+      try {
+        const investmentsRes = await api.get('/api/private-equity/investments/');
+        investments = investmentsRes.data || [];
+      } catch (err) {
+        console.warn('Failed to load investments (optional):', err);
+        // Continue without investments - this is optional
+        investments = [];
+      }
 
       // Load recent messages and unread count (optional)
       let messages = [];
@@ -77,7 +99,8 @@ function LenderDashboard({ onboardingProgress, onStartOnboarding }) {
 
     } catch (err) {
       console.error('Dashboard load error:', err);
-      setError('Failed to load dashboard data');
+      const errorMessage = err.response?.data?.detail || err.message || 'Unknown error';
+      setError(`Failed to load dashboard data: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -123,6 +146,31 @@ function LenderDashboard({ onboardingProgress, onStartOnboarding }) {
           Overview of your products, applications, and investments
         </p>
       </div>
+
+      {/* Onboarding Progress Banner */}
+      {onboardingProgress && !onboardingProgress.is_complete && onboardingProgress.completion_percentage < 100 && (
+        <div style={{
+          background: theme.colors.warningLight,
+          color: theme.colors.warningDark,
+          padding: theme.spacing.md,
+          borderRadius: theme.borderRadius.md,
+          marginBottom: theme.spacing.lg,
+          border: `1px solid ${theme.colors.warning}`,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}>
+          <div>
+            <strong>Complete Your Profile</strong>
+            <div style={{ fontSize: theme.typography.fontSize.sm, marginTop: theme.spacing.xs }}>
+              {onboardingProgress.completion_percentage}% complete. {100 - onboardingProgress.completion_percentage}% remaining.
+            </div>
+          </div>
+          <Button variant="primary" size="sm" onClick={onStartOnboarding}>
+            Continue Setup
+          </Button>
+        </div>
+      )}
 
       {error && (
         <div style={{

@@ -35,9 +35,27 @@ function LenderProductWizard() {
     eligibility_criteria: '',
   });
 
+  const isPropertyBasedFunding = (fundingType) => {
+    const propertyBasedTypes = [
+      'development_finance', 'senior_debt', 'commercial_mortgage', 
+      'mortgage', 'equity'
+    ];
+    return propertyBasedTypes.includes(fundingType);
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    const newFormData = { ...formData, [name]: value };
+    
+    // If funding type changes to non-property, set property_type to N/A
+    if (name === 'funding_type' && !isPropertyBasedFunding(value)) {
+      newFormData.property_type = 'n/a';
+    } else if (name === 'funding_type' && isPropertyBasedFunding(value) && formData.property_type === 'n/a') {
+      // If changing to property-based, set default property type
+      newFormData.property_type = 'residential';
+    }
+    
+    setFormData(newFormData);
   };
 
   const nextStep = () => setStep((s) => s + 1);
@@ -59,7 +77,7 @@ function LenderProductWizard() {
         name: formData.name,
         description: formData.description,
         funding_type: formData.funding_type,
-        property_type: formData.property_type,
+        property_type: isPropertyBasedFunding(formData.funding_type) ? formData.property_type : 'n/a',
         repayment_structure: formData.repayment_structure,
         min_loan_amount: formData.min_loan_amount,
         max_loan_amount: formData.max_loan_amount,
@@ -136,9 +154,33 @@ function LenderProductWizard() {
                 onChange={handleChange}
                 required
               >
-                <option value="mortgage">Mortgage Finance</option>
-                <option value="senior_debt">Senior Debt/Development Finance</option>
-                <option value="equity">Equity Finance</option>
+                <optgroup label="Property & Development Finance">
+                  <option value="development_finance">Development Finance</option>
+                  <option value="senior_debt">Senior Debt/Development Finance</option>
+                  <option value="commercial_mortgage">Commercial Mortgages</option>
+                  <option value="mortgage">Mortgage Finance</option>
+                  <option value="equity">Equity Finance</option>
+                </optgroup>
+                <optgroup label="Alternative Business Finance">
+                  <option value="revenue_based">Revenue Based Funding</option>
+                  <option value="merchant_cash_advance">Merchant Cash Advance</option>
+                  <option value="term_loan_p2p">Term Loans (Peer-to-Peer)</option>
+                  <option value="bank_overdraft">Bank Overdraft</option>
+                  <option value="business_credit_card">Business Credit Cards</option>
+                </optgroup>
+                <optgroup label="Asset-Based Finance">
+                  <option value="ip_funding">Intellectual Property (IP) Funding</option>
+                  <option value="stock_finance">Stock Finance</option>
+                  <option value="asset_finance">Asset Finance</option>
+                  <option value="factoring">Factoring / Invoice Discounting</option>
+                </optgroup>
+                <optgroup label="Trade & Export Finance">
+                  <option value="trade_finance">Trade Finance</option>
+                  <option value="export_finance">Export Finance</option>
+                </optgroup>
+                <optgroup label="Public Sector">
+                  <option value="public_sector_startup">Public Sector Funding (Start Up Loan)</option>
+                </optgroup>
               </Select>
 
               <Select

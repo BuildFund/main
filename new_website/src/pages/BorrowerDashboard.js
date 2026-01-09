@@ -19,6 +19,8 @@ function BorrowerDashboard({ onboardingProgress, onStartOnboarding }) {
   const [recentProjects, setRecentProjects] = useState([]);
   const [recentApplications, setRecentApplications] = useState([]);
   const [recentMessages, setRecentMessages] = useState([]);
+  const [recentSavedProducts, setRecentSavedProducts] = useState([]);
+  const [savedProductsCount, setSavedProductsCount] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -38,7 +40,37 @@ function BorrowerDashboard({ onboardingProgress, onStartOnboarding }) {
         projects = projectsRes.data || [];
       } catch (err) {
         console.error('Failed to load projects:', err);
-        throw new Error(`Failed to load projects: ${err.response?.data?.detail || err.message || 'Unknown error'}`);
+        console.error('Error details:', {
+          message: err.message,
+          response: err.response,
+          request: err.request,
+          code: err.code,
+        });
+        
+        // Provide more specific error messages
+        let errorMessage = 'Failed to load projects';
+        if (err.response) {
+          // Server responded with error
+          if (err.response.status === 401 || err.response.status === 403) {
+            errorMessage = 'Authentication failed. Please log in again.';
+            // Clear invalid token
+            localStorage.removeItem('token');
+            localStorage.removeItem('role');
+            // Redirect to login
+            window.location.href = '/login';
+            return;
+          }
+          errorMessage = err.response.data?.detail || 
+                        err.response.data?.error || 
+                        `Server error: ${err.response.status}`;
+        } else if (err.request) {
+          // Request made but no response (network error, CORS, etc.)
+          errorMessage = `Network Error: Cannot connect to backend server. Please check: 1) Backend is running on http://localhost:8000, 2) CORS is configured correctly, 3) You are logged in with a valid token.`;
+        } else {
+          // Error setting up request
+          errorMessage = err.message || 'Unknown error';
+        }
+        throw new Error(errorMessage);
       }
       
       // Load applications
@@ -93,6 +125,18 @@ function BorrowerDashboard({ onboardingProgress, onStartOnboarding }) {
 
       const pendingApplications = applications.filter(a => a.status === 'pending' || a.status === 'under_review').length;
 
+      // Load saved products (favourites)
+      let savedProducts = [];
+      let savedCount = 0;
+      try {
+        const favouritesRes = await api.get('/api/products/favourites/');
+        savedProducts = favouritesRes.data?.results || favouritesRes.data || [];
+        savedCount = savedProducts.length;
+      } catch (err) {
+        console.warn('Failed to load saved products:', err);
+        // Continue without saved products
+      }
+
       setStats({
         totalProjects: projects.length,
         pendingProjects,
@@ -101,11 +145,14 @@ function BorrowerDashboard({ onboardingProgress, onStartOnboarding }) {
         totalApplications: applications.length,
         pendingApplications,
         privateEquityOpportunities: opportunities.length,
+        savedProducts: savedCount,
       });
 
       setRecentProjects(projects.slice(0, 5));
       setRecentApplications(applications.slice(0, 5));
       setRecentMessages(messages.slice(0, 5));
+      setRecentSavedProducts(savedProducts.slice(0, 5));
+      setSavedProductsCount(savedCount);
       setUnreadCount(unread);
 
     } catch (err) {
@@ -211,6 +258,7 @@ function BorrowerDashboard({ onboardingProgress, onStartOnboarding }) {
         <StatCard title="Pending Review" value={stats.pendingProjects} icon="⏳" color="warning" />
         <StatCard title="Approved" value={stats.approvedProjects} icon="✅" color="success" />
         <StatCard title="Matched Products" value={stats.totalMatches} icon="🔍" color="info" />
+        <StatCard title="Saved Products" value={stats.savedProducts || 0} icon="⭐" color="warning" />
         <StatCard title="Applications" value={stats.totalApplications} icon="📝" color="secondary" />
         <StatCard title="PE Opportunities" value={stats.privateEquityOpportunities} icon="💼" color="accent" />
         <StatCard title="Unread Messages" value={unreadCount} icon="💬" color={unreadCount > 0 ? "warning" : "info"} />
@@ -331,6 +379,76 @@ function BorrowerDashboard({ onboardingProgress, onStartOnboarding }) {
           </div>
         )}
       </div>
+
+      {/* Recent Saved Products */}
+      {recentSavedProducts.length > 0 && (
+        <div style={{ marginBottom: theme.spacing['2xl'] }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.lg }}>
+            <h2 style={{
+              fontSize: theme.typography.fontSize['2xl'],
+              fontWeight: theme.typography.fontWeight.semibold,
+              margin: 0,
+              color: theme.colors.textPrimary,
+            }}>
+              Recent Saved Products
+            </h2>
+            <Link to="/borrower/matches" style={{ 
+              color: theme.colors.primary, 
+              textDecoration: 'none',
+              fontWeight: theme.typography.fontWeight.medium,
+            }}>
+              View All →
+            </Link>
+          </div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+            gap: theme.spacing.lg,
+          }}>
+            {recentSavedProducts.map((fav) => (
+              <div key={fav.id} style={commonStyles.card}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: theme.spacing.md }}>
+                  <h3 style={{
+                    margin: 0,
+                    fontSize: theme.typography.fontSize.lg,
+                    fontWeight: theme.typography.fontWeight.semibold,
+                  }}>
+                    {fav.product?.name || 'Product'}
+                  </h3>
+                  <Badge variant="warning">⭐ Saved</Badge>
+                </div>
+                <div style={{ marginBottom: theme.spacing.md }}>
+                  <p style={{ margin: `${theme.spacing.xs} 0`, color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.sm }}>
+                    <strong>Lender:</strong> {fav.product?.lender_details?.organisation_name || 'N/A'}
+                  </p>
+                  <p style={{ margin: `${theme.spacing.xs} 0`, color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.sm }}>
+                    <strong>Funding Type:</strong> {fav.product?.funding_type || 'N/A'}
+                  </p>
+                  {fav.project && (
+                    <p style={{ margin: `${theme.spacing.xs} 0`, color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.sm }}>
+                      <strong>For Project:</strong> {fav.project?.description || fav.project?.address || `Project #${fav.project?.id}`}
+                    </p>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: theme.spacing.xs }}>
+                  {fav.product && (
+                    <Link to={`/borrower/products/${fav.product.id}${fav.project ? `?project_id=${fav.project.id}` : ''}`} style={{ textDecoration: 'none', flex: 1 }}>
+                      <Button variant="outline" size="sm" style={{ width: '100%' }}>
+                        View Details
+                      </Button>
+                    </Link>
+                  )}
+                  <Link to="/borrower/matches" style={{ textDecoration: 'none', flex: 1 }}>
+                    <Button variant="primary" size="sm" style={{ width: '100%' }}>
+                      View All Saved
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Recent Applications */}
       {recentApplications.length > 0 && (

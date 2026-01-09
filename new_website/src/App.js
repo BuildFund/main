@@ -21,9 +21,15 @@ import LenderProfile from './pages/LenderProfile';
 import Messages from './pages/Messages';
 import ProjectDetail from './pages/ProjectDetail';
 import ProductDetail from './pages/ProductDetail';
+import BorrowerProductDetail from './pages/BorrowerProductDetail';
 import ApplicationDetail from './pages/ApplicationDetail';
+import BorrowerInformation from './pages/BorrowerInformation';
 import AccountSettings from './pages/AccountSettings';
 import FCACertification from './pages/FCACertification';
+import ConsultantDashboard from './pages/ConsultantDashboard';
+import Register from './pages/Register';
+import ConsultantQuoteForm from './pages/ConsultantQuoteForm';
+import ConsultantAppointmentDetail from './pages/ConsultantAppointmentDetail';
 
 function App() {
   const [token, setToken] = React.useState(() => localStorage.getItem('token'));
@@ -48,6 +54,7 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<Login onLogin={handleLogin} />} />
+          <Route path="/register" element={<Register />} />
           <Route path="*" element={<Navigate to="/login" />} />
         </Routes>
       </Router>
@@ -69,6 +76,7 @@ function App() {
         <Route path="/borrower/projects/:id" element={<LayoutWrapper><ProjectDetail /></LayoutWrapper>} />
         <Route path="/borrower/projects/new" element={<LayoutWrapper><BorrowerProjectWizard /></LayoutWrapper>} />
         <Route path="/borrower/matches" element={<LayoutWrapper><BorrowerMatches /></LayoutWrapper>} />
+        <Route path="/borrower/products/:id" element={<LayoutWrapper><BorrowerProductDetail /></LayoutWrapper>} />
         <Route path="/borrower/applications" element={<LayoutWrapper><BorrowerApplications /></LayoutWrapper>} />
         <Route path="/borrower/applications/:id" element={<LayoutWrapper><ApplicationDetail /></LayoutWrapper>} />
         <Route path="/borrower/documents" element={<LayoutWrapper><Documents /></LayoutWrapper>} />
@@ -80,6 +88,7 @@ function App() {
         <Route path="/lender/products/new" element={<LayoutWrapper><LenderProductWizard /></LayoutWrapper>} />
         <Route path="/lender/applications" element={<LayoutWrapper><LenderApplications /></LayoutWrapper>} />
         <Route path="/lender/applications/:id" element={<LayoutWrapper><ApplicationDetail /></LayoutWrapper>} />
+        <Route path="/lender/applications/:id/borrower-info" element={<LayoutWrapper><BorrowerInformation /></LayoutWrapper>} />
         <Route path="/lender/documents" element={<LayoutWrapper><Documents /></LayoutWrapper>} />
         <Route path="/lender/messages" element={<LayoutWrapper><Messages /></LayoutWrapper>} />
         <Route path="/lender/private-equity" element={<LayoutWrapper><LenderPrivateEquity /></LayoutWrapper>} />
@@ -88,6 +97,9 @@ function App() {
         <Route path="/admin/dashboard" element={<LayoutWrapper><AdminDashboard /></LayoutWrapper>} />
         <Route path="/admin/private-equity" element={<LayoutWrapper><AdminPrivateEquity /></LayoutWrapper>} />
         <Route path="/account/settings" element={<LayoutWrapper><AccountSettings /></LayoutWrapper>} />
+        <Route path="/consultant/dashboard" element={<LayoutWrapper><ConsultantDashboard /></LayoutWrapper>} />
+        <Route path="/consultant/services/:serviceId/quote" element={<LayoutWrapper><ConsultantQuoteForm /></LayoutWrapper>} />
+        <Route path="/consultant/appointments/:appointmentId" element={<LayoutWrapper><ConsultantAppointmentDetail /></LayoutWrapper>} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
