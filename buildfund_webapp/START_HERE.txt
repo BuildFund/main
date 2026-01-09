@@ -4,19 +4,21 @@
 
 IMPORTANT: You MUST start this server manually in a PowerShell window!
 
-STEP 1: Open PowerShell
-STEP 2: Copy and paste these commands:
+STEP 1: Ensure .env file exists with your API keys
+        (The .env file is gitignored and contains your secure API keys)
 
-cd "C:\Users\paul-\OneDrive - BARE Capital Ltd\BARE Drive\10.0 BUILDFUND\1.0 Website Dev\GitHub\buildfund_webapp"
+STEP 2: Open PowerShell and run:
+        .\start_server.ps1
+        OR
+        .\start_server_debug.ps1
 
-$env:GOOGLE_API_KEY="[YOUR_GOOGLE_API_KEY_HERE]"
-$env:HMRC_API_KEY="[YOUR_HMRC_API_KEY_HERE]"
-$env:OPENAI_API_KEY="[YOUR_OPENAI_API_KEY_HERE]"
-
-python manage.py runserver
+        The scripts will automatically load API keys from .env file.
 
 STEP 3: Keep that window open!
 
 STEP 4: Test at http://localhost:8000/admin/
+
+SECURITY NOTE: API keys are stored in .env file (gitignored) and will
+               NEVER be committed to GitHub. The .env file is secure.
 
 ================================================================================
