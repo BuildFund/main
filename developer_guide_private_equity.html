@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BuildFund Deployment Guide (MongoDB + Private Equity)</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.5; }
+    h1, h2, h3 { color: #1a4e8a; }
+    code { background: #f4f4f4; padding: 2px 4px; border-radius: 4px; }
+    ul { margin-top: 0; }
+  </style>
+</head>
+<body>
+  <h1>BuildFund Deployment Guide</h1>
+  <p>
+    This document describes how to unpack and run the BuildFund platform with MongoDB
+    persistence and the integrated Private Equity module. Follow these
+    instructions to launch the application on your development or production
+    environment.
+  </p>
+
+  <h2>Prerequisites</h2>
+  <ul>
+    <li>Python 3.11 or higher with <code>pip</code> installed</li>
+    <li>Node.js (v16 or later) and npm</li>
+    <li>A running MongoDB instance (local or cloud)</li>
+    <li>OpenAI and Google API keys for underwriting and mapping services</li>
+  </ul>
+
+  <h2>Unpack the Source Code</h2>
+  <ol>
+    <li>Unzip the provided archive (e.g. <code>buildfund_pe_mongo.zip</code>) to a directory of your choice.</li>
+    <li>The archive contains two main folders:
+      <ul>
+        <li><strong>buildfund_webapp</strong> – Django REST API backed by MongoDB</li>
+        <li><strong>new_website</strong> – React front end</li>
+      </ul>
+    </li>
+  </ol>
+
+  <h2>Configure and Run the Backend</h2>
+  <ol>
+    <li>
+      Navigate to the backend directory:
+      <pre><code>cd buildfund_webapp</code></pre>
+    </li>
+    <li>
+      Create and activate a virtual environment and install dependencies:
+      <pre><code>python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt</code></pre>
+    </li>
+    <li>
+      Copy the environment template and fill in required variables:
+      <pre><code>cp .env.example .env</code></pre>
+      Edit <code>.env</code> and set:
+      <ul>
+        <li><code>SECRET_KEY</code> – a unique Django secret</li>
+        <li><code>DEBUG</code> – set to <code>False</code> in production</li>
+        <li><code>ALLOWED_HOSTS</code> – comma‑separated hostnames for your deployment</li>
+        <li><code>DB_ENGINE=djongo</code> – instructs Django to use MongoDB via Djongo</li>
+        <li><code>DB_NAME, DB_HOST, DB_PORT, DB_USER, DB_PASSWORD</code> – your MongoDB connection details</li>
+        <li><code>OPENAI_API_KEY</code> – your OpenAI secret key for underwriting</li>
+        <li><code>GOOGLE_API_KEY</code> – your Google Maps key for address search and geocoding</li>
+      </ul>
+    </li>
+    <li>
+      Run the setup script to prepare the database:
+      <pre><code>./scripts/setup_mongo.sh</code></pre>
+      This script applies all database migrations to MongoDB using Djongo.
+    </li>
+    <li>
+      (Optional) create an admin user so you can log in to the Django admin:
+      <pre><code>python manage.py createsuperuser</code></pre>
+    </li>
+    <li>
+      Start the backend server for development:
+      <pre><code>python manage.py runserver 0.0.0.0:8000</code></pre>
+      In production you should use Gunicorn or a similar WSGI server behind a reverse proxy.
+    </li>
+  </ol>
+
+  <h2>Configure and Run the Frontend</h2>
+  <ol>
+    <li>
+      In a new terminal, navigate to the front‑end directory:
+      <pre><code>cd new_website</code></pre>
+    </li>
+    <li>
+      Install dependencies with npm:
+      <pre><code>npm install</code></pre>
+    </li>
+    <li>
+      Create a <code>.env</code> file in <code>new_website</code> with:
+      <pre><code>REACT_APP_API_BASE_URL=http://localhost:8000</code></pre>
+      Adjust the URL if your backend runs on a different host or port.
+    </li>
+    <li>
+      Start the development server:
+      <pre><code>npm start</code></pre>
+      For production builds, run <code>npm run build</code> and serve the static files using a web server such as Nginx.
+    </li>
+  </ol>
+
+  <h2>Private Equity Module</h2>
+  <p>
+    The platform includes a Private Equity module allowing borrowers to list
+    equity opportunities, lenders to invest, and administrators to approve
+    submissions.
+  </p>
+  <ul>
+    <li>
+      <strong>Borrowers</strong>: Go to <em>Dashboard → Private Equity</em> to view
+      your existing opportunities and create new ones. Fill in the title,
+      description, industry, funding required, valuation and the equity
+      percentage offered. New submissions are automatically marked as
+      <em>pending review</em> and will be visible to lenders once approved by an
+      administrator.
+    </li>
+    <li>
+      <strong>Lenders</strong>: Navigate to <em>Dashboard → Private Equity</em> to view
+      approved opportunities. For each opportunity you can enter an
+      investment amount, the equity share you want and optional notes.
+      Submitted investments will appear in your "My Investments" list.
+    </li>
+    <li>
+      <strong>Admins</strong>: In the admin dashboard click <em>Private Equity</em> to
+      review new submissions. Approve opportunities to make them available
+      to lenders. Decline functionality can be added if desired.
+    </li>
+  </ul>
+
+  <h2>Security Best Practices</h2>
+  <p>
+    Keep your API keys private by storing them in environment variables and
+    never exposing them in client‑side code. The backend enforces
+    token‑based authentication, rate limiting and CORS restrictions so only
+    approved domains can call the APIs【637421499612537†L23-L31】【422390506697459†L266-L276】.
+  </p>
+
+  <p>
+    With these steps completed the BuildFund platform will be running
+    locally, ready for further styling, testing and deployment. The
+    integrated Private Equity module leverages the same secure
+    architecture as the core project and fits seamlessly into the
+    Borrower, Lender and Admin dashboards.
+  </p>
+</body>
+</html>

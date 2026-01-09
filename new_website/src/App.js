@@ -1,0 +1,97 @@
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import Layout from './components/Layout';
+import BorrowerProjects from './pages/BorrowerProjects';
+import LenderProducts from './pages/LenderProducts';
+import BorrowerMatches from './pages/BorrowerMatches';
+import LenderApplications from './pages/LenderApplications';
+import AdminDashboard from './pages/AdminDashboard';
+import BorrowerProjectWizard from './pages/BorrowerProjectWizard';
+import LenderProductWizard from './pages/LenderProductWizard';
+import BorrowerPrivateEquity from './pages/BorrowerPrivateEquity';
+import LenderPrivateEquity from './pages/LenderPrivateEquity';
+import AdminPrivateEquity from './pages/AdminPrivateEquity';
+import BorrowerProfile from './pages/BorrowerProfile';
+import BorrowerApplications from './pages/BorrowerApplications';
+import Documents from './pages/Documents';
+import LenderProfile from './pages/LenderProfile';
+import Messages from './pages/Messages';
+import ProjectDetail from './pages/ProjectDetail';
+import ProductDetail from './pages/ProductDetail';
+import ApplicationDetail from './pages/ApplicationDetail';
+import AccountSettings from './pages/AccountSettings';
+import FCACertification from './pages/FCACertification';
+
+function App() {
+  const [token, setToken] = React.useState(() => localStorage.getItem('token'));
+  const [role, setRole] = React.useState(() => localStorage.getItem('role'));
+
+  const handleLogin = (tok, userRole) => {
+    localStorage.setItem('token', tok);
+    localStorage.setItem('role', userRole);
+    setToken(tok);
+    setRole(userRole);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('role');
+    setToken(null);
+    setRole(null);
+  };
+
+  if (!token) {
+    return (
+      <Router>
+        <Routes>
+          <Route path="/login" element={<Login onLogin={handleLogin} />} />
+          <Route path="*" element={<Navigate to="/login" />} />
+        </Routes>
+      </Router>
+    );
+  }
+
+  // Wrapper component for routes that need Layout
+  const LayoutWrapper = ({ children }) => (
+    <Layout role={role} onLogout={handleLogout}>
+      {children}
+    </Layout>
+  );
+
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Dashboard role={role} onLogout={handleLogout} />} />
+        <Route path="/borrower/projects" element={<LayoutWrapper><BorrowerProjects /></LayoutWrapper>} />
+        <Route path="/borrower/projects/:id" element={<LayoutWrapper><ProjectDetail /></LayoutWrapper>} />
+        <Route path="/borrower/projects/new" element={<LayoutWrapper><BorrowerProjectWizard /></LayoutWrapper>} />
+        <Route path="/borrower/matches" element={<LayoutWrapper><BorrowerMatches /></LayoutWrapper>} />
+        <Route path="/borrower/applications" element={<LayoutWrapper><BorrowerApplications /></LayoutWrapper>} />
+        <Route path="/borrower/applications/:id" element={<LayoutWrapper><ApplicationDetail /></LayoutWrapper>} />
+        <Route path="/borrower/documents" element={<LayoutWrapper><Documents /></LayoutWrapper>} />
+        <Route path="/borrower/private-equity" element={<LayoutWrapper><BorrowerPrivateEquity /></LayoutWrapper>} />
+        <Route path="/borrower/profile" element={<LayoutWrapper><BorrowerProfile /></LayoutWrapper>} />
+        <Route path="/borrower/messages" element={<LayoutWrapper><Messages /></LayoutWrapper>} />
+        <Route path="/lender/products" element={<LayoutWrapper><LenderProducts /></LayoutWrapper>} />
+        <Route path="/lender/products/:id" element={<LayoutWrapper><ProductDetail /></LayoutWrapper>} />
+        <Route path="/lender/products/new" element={<LayoutWrapper><LenderProductWizard /></LayoutWrapper>} />
+        <Route path="/lender/applications" element={<LayoutWrapper><LenderApplications /></LayoutWrapper>} />
+        <Route path="/lender/applications/:id" element={<LayoutWrapper><ApplicationDetail /></LayoutWrapper>} />
+        <Route path="/lender/documents" element={<LayoutWrapper><Documents /></LayoutWrapper>} />
+        <Route path="/lender/messages" element={<LayoutWrapper><Messages /></LayoutWrapper>} />
+        <Route path="/lender/private-equity" element={<LayoutWrapper><LenderPrivateEquity /></LayoutWrapper>} />
+        <Route path="/fca-certification" element={<LayoutWrapper><FCACertification /></LayoutWrapper>} />
+        <Route path="/lender/profile" element={<LayoutWrapper><LenderProfile /></LayoutWrapper>} />
+        <Route path="/admin/dashboard" element={<LayoutWrapper><AdminDashboard /></LayoutWrapper>} />
+        <Route path="/admin/private-equity" element={<LayoutWrapper><AdminPrivateEquity /></LayoutWrapper>} />
+        <Route path="/account/settings" element={<LayoutWrapper><AccountSettings /></LayoutWrapper>} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </Router>
+  );
+}
+
+export default App;

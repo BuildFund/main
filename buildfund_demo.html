@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BuildFund Demo</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+      background: #f7f7f7;
+    }
+    h1 {
+      color: #1a4e8a;
+    }
+    nav ul {
+      list-style: none;
+      padding: 0;
+      display: flex;
+      gap: 1rem;
+    }
+    nav ul li a {
+      color: #1a4e8a;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    nav ul li a:hover {
+      text-decoration: underline;
+    }
+    section {
+      display: none;
+      background: #fff;
+      padding: 1rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-top: 1rem;
+    }
+    section.active {
+      display: block;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 0.5rem;
+    }
+    table, th, td {
+      border: 1px solid #ccc;
+    }
+    th, td {
+      padding: 0.5rem;
+      text-align: left;
+    }
+    form div {
+      margin-bottom: 0.5rem;
+    }
+    form label {
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+    input[type="text"], input[type="number"], select, textarea {
+      width: 100%;
+      padding: 0.4rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    textarea {
+      min-height: 60px;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      background: #1a4e8a;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #143d6c;
+    }
+    .error {
+      color: red;
+      margin-top: 0.5rem;
+    }
+    .success {
+      color: green;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>BuildFund Demo</h1>
+  <p>
+    This demo simulates the major workflows of the BuildFund platform for
+    Borrowers, Lenders and Administrators.  Use the role selector below to
+    switch between views and explore the sample data and forms.  All data
+    lives in memory; no network calls are made.
+  </p>
+  <div>
+    <label for="role-select"><strong>Switch Role:</strong></label>
+    <select id="role-select">
+      <option value="borrower">Borrower</option>
+      <option value="lender">Lender</option>
+      <option value="admin">Admin</option>
+    </select>
+  </div>
+  <!-- Navigation menus for each role -->
+  <nav id="borrower-nav" class="role-nav">
+    <ul>
+      <li><a href="#" data-page="borrower-projects">My Projects</a></li>
+      <li><a href="#" data-page="borrower-matches">Matched Products</a></li>
+      <li><a href="#" data-page="borrower-pe">Private Equity</a></li>
+    </ul>
+  </nav>
+  <nav id="lender-nav" class="role-nav" style="display:none;">
+    <ul>
+      <li><a href="#" data-page="lender-products">My Products</a></li>
+      <li><a href="#" data-page="lender-applications">Applications</a></li>
+      <li><a href="#" data-page="lender-pe">Private Equity</a></li>
+    </ul>
+  </nav>
+  <nav id="admin-nav" class="role-nav" style="display:none;">
+    <ul>
+      <li><a href="#" data-page="admin-dashboard">Dashboard</a></li>
+      <li><a href="#" data-page="admin-pe">Private Equity</a></li>
+    </ul>
+  </nav>
+
+  <!-- Borrower pages -->
+  <section id="borrower-projects" class="page">
+    <h2>My Projects</h2>
+    <div id="borrower-projects-content"></div>
+  </section>
+  <section id="borrower-matches" class="page">
+    <h2>Matched Products</h2>
+    <div id="borrower-matches-content"></div>
+  </section>
+  <section id="borrower-pe" class="page">
+    <h2>Private Equity Opportunities</h2>
+    <div id="borrower-pe-content"></div>
+  </section>
+
+  <!-- Lender pages -->
+  <section id="lender-products" class="page">
+    <h2>My Products</h2>
+    <div id="lender-products-content"></div>
+  </section>
+  <section id="lender-applications" class="page">
+    <h2>Applications</h2>
+    <div id="lender-applications-content"></div>
+  </section>
+  <section id="lender-pe" class="page">
+    <h2>Private Equity</h2>
+    <div id="lender-pe-content"></div>
+  </section>
+
+  <!-- Admin pages -->
+  <section id="admin-dashboard" class="page">
+    <h2>Admin Dashboard</h2>
+    <div id="admin-dashboard-content"></div>
+  </section>
+  <section id="admin-pe" class="page">
+    <h2>Private Equity (Admin)</h2>
+    <div id="admin-pe-content"></div>
+  </section>
+
+  <script>
+    // Sample data sets
+    // ID counters for newly created records (start after existing samples)
+    let projectIdCounter = 4;
+    let productIdCounter = 4;
+    let applicationIdCounter = 3;
+    let opportunityIdCounter = 4;
+    let investmentIdCounter = 3;
+
+    // Projects: demonstration of borrower submissions
+    const projects = [
+      {
+        id: 1,
+        borrower: 'Borrower1',
+        funding_type: 'mortgage',
+        property_type: 'residential',
+        address: '221B Bath Road cycle path',
+        town: 'Tilehurst',
+        county: 'West Berkshire',
+        postcode: 'RG31 7YE',
+        description: 'Light refurb of family home',
+        development_extent: 'light_refurb',
+        tenure: 'freehold',
+        loan_amount_required: 100000,
+        term_required_months: 24,
+        repayment_method: 'sale',
+        planning_permission: true,
+        planning_authority: 'West Berkshire Council',
+        planning_reference: 'PP/2025/1234',
+        planning_description: 'Refurbishment permitted',
+        status: 'approved',
+      },
+      {
+        id: 2,
+        borrower: 'Borrower1',
+        funding_type: 'senior_debt',
+        property_type: 'mixed',
+        address: '10 Downing Street',
+        town: 'London',
+        county: 'Greater London',
+        postcode: 'SW1A 2AA',
+        description: 'Conversion of offices to apartments',
+        development_extent: 'conversion',
+        tenure: 'freehold',
+        loan_amount_required: 200000,
+        term_required_months: 36,
+        repayment_method: 'sale',
+        planning_permission: true,
+        planning_authority: 'City of Westminster',
+        planning_reference: 'PL/2025/4567',
+        planning_description: 'Change of use approved',
+        status: 'pending_review',
+      },
+      {
+        id: 3,
+        borrower: 'Borrower1',
+        funding_type: 'equity',
+        property_type: 'commercial',
+        address: '123 High Street',
+        town: 'Manchester',
+        county: 'Greater Manchester',
+        postcode: 'M1 2AB',
+        description: 'Redevelopment of retail space',
+        development_extent: 'heavy_refurb',
+        tenure: 'leasehold',
+        loan_amount_required: 300000,
+        term_required_months: 18,
+        repayment_method: 'refinance',
+        planning_permission: false,
+        planning_authority: '',
+        planning_reference: '',
+        planning_description: '',
+        status: 'pending_review',
+      },
+    ];
+
+    // Products: demonstration of lender submissions
+    const products = [
+      {
+        id: 1,
+        lender: 'Lender1',
+        name: 'Residential Bridge Loan',
+        funding_type: 'mortgage',
+        property_type: 'residential',
+        min_loan_amount: 50000,
+        max_loan_amount: 500000,
+        interest_rate_min: 7,
+        interest_rate_max: 9,
+        min_term: 12,
+        max_term: 24,
+        max_ltv_ratio: 70,
+        status: 'approved',
+      },
+      {
+        id: 2,
+        lender: 'Lender1',
+        name: 'Development Finance',
+        funding_type: 'senior_debt',
+        property_type: 'mixed',
+        min_loan_amount: 100000,
+        max_loan_amount: 1000000,
+        interest_rate_min: 8,
+        interest_rate_max: 12,
+        min_term: 12,
+        max_term: 36,
+        max_ltv_ratio: 65,
+        status: 'pending',
+      },
+      {
+        id: 3,
+        lender: 'Lender1',
+        name: 'Commercial Mortgage',
+        funding_type: 'mortgage',
+        property_type: 'commercial',
+        min_loan_amount: 200000,
+        max_loan_amount: 2000000,
+        interest_rate_min: 6,
+        interest_rate_max: 8,
+        min_term: 24,
+        max_term: 60,
+        max_ltv_ratio: 75,
+        status: 'approved',
+      },
+    ];
+
+    // Applications: lender applications to projects
+    const applications = [
+      {
+        id: 1,
+        projectId: 2,
+        productId: 1,
+        proposed_loan_amount: 150000,
+        proposed_interest_rate: 8,
+        proposed_term_months: 24,
+        proposed_ltv_ratio: 60,
+        status: 'pending',
+      },
+      {
+        id: 2,
+        projectId: 1,
+        productId: 3,
+        proposed_loan_amount: 80000,
+        proposed_interest_rate: 7.5,
+        proposed_term_months: 18,
+        proposed_ltv_ratio: 65,
+        status: 'approved',
+      },
+    ];
+
+    // Private equity opportunities
+    const opportunities = [
+      {
+        id: 1,
+        borrower: 'Borrower1',
+        title: 'Tech Start-up',
+        description: 'Investment in innovative software company',
+        industry: 'Technology',
+        funding_required: 300000,
+        valuation: 1000000,
+        share_offered: 30,
+        status: 'approved',
+      },
+      {
+        id: 2,
+        borrower: 'Borrower1',
+        title: 'Green Energy Project',
+        description: 'Equity raise for solar farm',
+        industry: 'Energy',
+        funding_required: 500000,
+        valuation: 1500000,
+        share_offered: 25,
+        status: 'pending_review',
+      },
+      {
+        id: 3,
+        borrower: 'Borrower1',
+        title: 'Retail Expansion',
+        description: 'Equity raise for expanding retail chain',
+        industry: 'Retail',
+        funding_required: 750000,
+        valuation: 3000000,
+        share_offered: 20,
+        status: 'declined',
+      },
+    ];
+
+    // Investments in private equity opportunities
+    const investments = [
+      {
+        id: 1,
+        opportunityId: 1,
+        lender: 'Lender1',
+        amount: 50000,
+        share: 5,
+        notes: 'First round investment',
+        status: 'pending',
+      },
+      {
+        id: 2,
+        opportunityId: 1,
+        lender: 'Lender1',
+        amount: 100000,
+        share: 10,
+        notes: 'Second investment with board seat option',
+        status: 'accepted',
+      },
+    ];
+
+    // Utility functions to get project/product/opportunity names
+    function getProjectById(id) {
+      return projects.find(p => p.id === id);
+    }
+    function getProductById(id) {
+      return products.find(p => p.id === id);
+    }
+    function getOpportunityById(id) {
+      return opportunities.find(o => o.id === id);
+    }
+
+    // Show/hide role nav menus
+    function showRoleNav(role) {
+      document.getElementById('borrower-nav').style.display = role === 'borrower' ? 'block' : 'none';
+      document.getElementById('lender-nav').style.display = role === 'lender' ? 'block' : 'none';
+      document.getElementById('admin-nav').style.display = role === 'admin' ? 'block' : 'none';
+    }
+
+    // Show/hide pages
+    function showPage(page) {
+      document.querySelectorAll('.page').forEach(section => {
+        section.classList.remove('active');
+      });
+      const el = document.getElementById(page);
+      if (el) {
+        el.classList.add('active');
+      }
+    }
+
+    // Borrower: render projects list and create form
+    function renderBorrowerProjects() {
+      const container = document.getElementById('borrower-projects-content');
+      let html = '';
+      if (projects.length === 0) {
+        html += '<p>No projects found.</p>';
+      } else {
+        html += '<table><thead><tr>';
+        html += '<th>Description</th><th>Address</th><th>Funding</th><th>Status</th>';
+        html += '</tr></thead><tbody>';
+        projects.forEach(p => {
+          html += '<tr>';
+          html += '<td>' + (p.description || p.address) + '</td>';
+          html += '<td>' + p.address + '</td>';
+          html += '<td>' + p.loan_amount_required + ' / ' + p.term_required_months + 'm</td>';
+          html += '<td>' + p.status + '</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      }
+      // Create project form
+      html += '<h3 style="margin-top:1rem;">Create New Project</h3>';
+      html += '<form id="create-project-form">';
+      html += '<div><label>Funding Type</label><select name="funding_type">'
+        + '<option value="mortgage">Mortgage Finance</option>'
+        + '<option value="senior_debt">Development Finance</option>'
+        + '<option value="equity">Equity Finance</option>'
+        + '</select></div>';
+      html += '<div><label>Property Type</label><select name="property_type">'
+        + '<option value="residential">Residential</option>'
+        + '<option value="commercial">Commercial</option>'
+        + '<option value="mixed">Mixed</option>'
+        + '<option value="industrial">Industrial</option>'
+        + '</select></div>';
+      html += '<div><label>Address</label><input name="address" required></div>';
+      html += '<div><label>Town</label><input name="town" required></div>';
+      html += '<div><label>County</label><input name="county" required></div>';
+      html += '<div><label>Postcode</label><input name="postcode" required></div>';
+      html += '<div><label>Description</label><textarea name="description"></textarea></div>';
+      html += '<div><label>Development Extent</label><select name="development_extent">'
+        + '<option value="light_refurb">Light Refurb</option>'
+        + '<option value="heavy_refurb">Heavy Refurb</option>'
+        + '<option value="conversion">Conversion</option>'
+        + '<option value="new_build">New Build</option>'
+        + '</select></div>';
+      html += '<div><label>Tenure</label><select name="tenure">'
+        + '<option value="freehold">Freehold</option>'
+        + '<option value="leasehold">Leasehold</option>'
+        + '</select></div>';
+      html += '<div><label>Loan Amount (£)</label><input type="number" name="loan_amount_required" required></div>';
+      html += '<div><label>Term (months)</label><input type="number" name="term_required_months" required></div>';
+      html += '<div><label>Repayment Method</label><select name="repayment_method">'
+        + '<option value="sale">Sale</option>'
+        + '<option value="refinance">Refinance</option>'
+        + '</select></div>';
+      html += '<button type="submit">Create Project</button>';
+      html += '<div id="project-error" class="error" style="display:none;"></div>';
+      html += '</form>';
+      container.innerHTML = html;
+      // Attach event handler
+      const form = document.getElementById('create-project-form');
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const data = new FormData(form);
+        const newProj = {
+          id: projectIdCounter++,
+          borrower: 'Borrower1',
+          funding_type: data.get('funding_type'),
+          property_type: data.get('property_type'),
+          address: data.get('address'),
+          town: data.get('town'),
+          county: data.get('county'),
+          postcode: data.get('postcode'),
+          description: data.get('description'),
+          development_extent: data.get('development_extent'),
+          tenure: data.get('tenure'),
+          loan_amount_required: parseFloat(data.get('loan_amount_required')),
+          term_required_months: parseInt(data.get('term_required_months'), 10),
+          repayment_method: data.get('repayment_method'),
+          planning_permission: false,
+          status: 'pending_review',
+        };
+        projects.push(newProj);
+        renderBorrowerProjects();
+      });
+    }
+
+    // Borrower: render matches
+    function renderBorrowerMatches() {
+      const container = document.getElementById('borrower-matches-content');
+      let html = '<div><label>Select Project:</label><select id="match-project-select">';
+      html += '<option value="">-- Select a project --</option>';
+      projects.forEach(p => {
+        html += '<option value="' + p.id + '">' + (p.description || p.address) + '</option>';
+      });
+      html += '</select></div>';
+      html += '<div id="match-results" style="margin-top:1rem;"></div>';
+      container.innerHTML = html;
+      const select = document.getElementById('match-project-select');
+      select.addEventListener('change', function() {
+        const projectId = parseInt(this.value);
+        const resultsContainer = document.getElementById('match-results');
+        if (!projectId) {
+          resultsContainer.innerHTML = '';
+          return;
+        }
+        const project = getProjectById(projectId);
+        // Find matching products: status approved and types match and within range
+        const matches = products.filter(prod => prod.status === 'approved' &&
+          prod.funding_type === project.funding_type &&
+          prod.property_type === project.property_type &&
+          project.loan_amount_required >= prod.min_loan_amount &&
+          project.loan_amount_required <= prod.max_loan_amount);
+        if (matches.length === 0) {
+          resultsContainer.innerHTML = '<p>No matches found for this project.</p>';
+        } else {
+          let mhtml = '<table><thead><tr>';
+          mhtml += '<th>Name</th><th>Funding Type</th><th>Property Type</th><th>Loan Range (£)</th><th>Interest Rate (%)</th><th>LTV (%)</th></tr></thead><tbody>';
+          matches.forEach(prod => {
+            mhtml += '<tr>';
+            mhtml += '<td>' + prod.name + '</td>';
+            mhtml += '<td>' + prod.funding_type + '</td>';
+            mhtml += '<td>' + prod.property_type + '</td>';
+            mhtml += '<td>' + prod.min_loan_amount + ' - ' + prod.max_loan_amount + '</td>';
+            mhtml += '<td>' + prod.interest_rate_min + ' - ' + prod.interest_rate_max + '</td>';
+            mhtml += '<td>' + prod.max_ltv_ratio + '</td>';
+            mhtml += '</tr>';
+          });
+          mhtml += '</tbody></table>';
+          resultsContainer.innerHTML = mhtml;
+        }
+      });
+    }
+
+    // Borrower: render private equity opportunities
+    function renderBorrowerPE() {
+      const container = document.getElementById('borrower-pe-content');
+      let html = '';
+      const ownOpps = opportunities.filter(o => o.borrower === 'Borrower1');
+      if (ownOpps.length === 0) {
+        html += '<p>No private equity opportunities found.</p>';
+      } else {
+        html += '<table><thead><tr>';
+        html += '<th>Title</th><th>Industry</th><th>Funding Required (£)</th><th>Valuation (£)</th><th>Share Offered (%)</th><th>Status</th>';
+        html += '</tr></thead><tbody>';
+        ownOpps.forEach(o => {
+          html += '<tr>';
+          html += '<td>' + o.title + '</td>';
+          html += '<td>' + o.industry + '</td>';
+          html += '<td>' + o.funding_required + '</td>';
+          html += '<td>' + (o.valuation || '—') + '</td>';
+          html += '<td>' + o.share_offered + '</td>';
+          html += '<td>' + o.status + '</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      }
+      // New opportunity form
+      html += '<h3 style="margin-top:1rem;">Create New Opportunity</h3>';
+      html += '<form id="create-opportunity-form">';
+      html += '<div><label>Title</label><input name="title" required></div>';
+      html += '<div><label>Description</label><textarea name="description"></textarea></div>';
+      html += '<div><label>Industry</label><input name="industry"></div>';
+      html += '<div><label>Funding Required (£)</label><input type="number" name="funding_required" step="0.01" required></div>';
+      html += '<div><label>Valuation (£)</label><input type="number" name="valuation" step="0.01"></div>';
+      html += '<div><label>Share Offered (%)</label><input type="number" name="share_offered" step="0.01" required></div>';
+      html += '<button type="submit">Create Opportunity</button>';
+      html += '</form>';
+      container.innerHTML = html;
+      // Attach event handler
+      const form = document.getElementById('create-opportunity-form');
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const data = new FormData(form);
+        const opp = {
+          id: opportunityIdCounter++,
+          borrower: 'Borrower1',
+          title: data.get('title'),
+          description: data.get('description'),
+          industry: data.get('industry'),
+          funding_required: parseFloat(data.get('funding_required')),
+          valuation: data.get('valuation') ? parseFloat(data.get('valuation')) : null,
+          share_offered: parseFloat(data.get('share_offered')),
+          status: 'pending_review',
+        };
+        opportunities.push(opp);
+        renderBorrowerPE();
+      });
+    }
+
+    // Lender: render products list and create form
+    function renderLenderProducts() {
+      const container = document.getElementById('lender-products-content');
+      let html = '';
+      const ownProds = products.filter(p => p.lender === 'Lender1');
+      if (ownProds.length === 0) {
+        html += '<p>No products found.</p>';
+      } else {
+        html += '<table><thead><tr>';
+        html += '<th>Name</th><th>Funding Type</th><th>Property Type</th><th>Loan Range (£)</th><th>Interest Rate (%)</th><th>LTV (%)</th><th>Status</th>';
+        html += '</tr></thead><tbody>';
+        ownProds.forEach(p => {
+          html += '<tr>';
+          html += '<td>' + p.name + '</td>';
+          html += '<td>' + p.funding_type + '</td>';
+          html += '<td>' + p.property_type + '</td>';
+          html += '<td>' + p.min_loan_amount + ' - ' + p.max_loan_amount + '</td>';
+          html += '<td>' + p.interest_rate_min + ' - ' + p.interest_rate_max + '</td>';
+          html += '<td>' + p.max_ltv_ratio + '</td>';
+          html += '<td>' + p.status + '</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      }
+      // New product form
+      html += '<h3 style="margin-top:1rem;">Create New Product</h3>';
+      html += '<form id="create-product-form">';
+      html += '<div><label>Name</label><input name="name" required></div>';
+      html += '<div><label>Funding Type</label><select name="funding_type">'
+        + '<option value="mortgage">Mortgage Finance</option>'
+        + '<option value="senior_debt">Development Finance</option>'
+        + '<option value="equity">Equity Finance</option>'
+        + '</select></div>';
+      html += '<div><label>Property Type</label><select name="property_type">'
+        + '<option value="residential">Residential</option>'
+        + '<option value="commercial">Commercial</option>'
+        + '<option value="mixed">Mixed</option>'
+        + '<option value="industrial">Industrial</option>'
+        + '</select></div>';
+      html += '<div><label>Minimum Loan (£)</label><input type="number" name="min_loan_amount" required></div>';
+      html += '<div><label>Maximum Loan (£)</label><input type="number" name="max_loan_amount" required></div>';
+      html += '<div><label>Interest Rate Range (%)</label><input type="text" name="interest_range" placeholder="e.g. 7-9" required></div>';
+      html += '<div><label>Maximum LTV (%)</label><input type="number" name="max_ltv" required></div>';
+      html += '<button type="submit">Create Product</button>';
+      html += '</form>';
+      container.innerHTML = html;
+      const form = document.getElementById('create-product-form');
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const data = new FormData(form);
+        const rangeParts = data.get('interest_range').split('-');
+        const product = {
+          id: productIdCounter++,
+          lender: 'Lender1',
+          name: data.get('name'),
+          funding_type: data.get('funding_type'),
+          property_type: data.get('property_type'),
+          min_loan_amount: parseFloat(data.get('min_loan_amount')),
+          max_loan_amount: parseFloat(data.get('max_loan_amount')),
+          interest_rate_min: parseFloat(rangeParts[0]),
+          interest_rate_max: parseFloat(rangeParts[1] || rangeParts[0]),
+          max_ltv_ratio: parseFloat(data.get('max_ltv')),
+          status: 'pending',
+        };
+        products.push(product);
+        renderLenderProducts();
+      });
+    }
+
+    // Lender: render applications and create form
+    function renderLenderApplications() {
+      const container = document.getElementById('lender-applications-content');
+      let html = '';
+      if (applications.length === 0) {
+        html += '<p>No applications found.</p>';
+      } else {
+        html += '<table><thead><tr>';
+        html += '<th>Project</th><th>Product</th><th>Loan (£)</th><th>Interest (%)</th><th>Term (m)</th><th>LTV (%)</th><th>Status</th>';
+        html += '</tr></thead><tbody>';
+        applications.forEach(app => {
+          const proj = getProjectById(app.projectId);
+          const prod = getProductById(app.productId);
+          html += '<tr>';
+          html += '<td>' + (proj ? (proj.description || proj.address) : app.projectId) + '</td>';
+          html += '<td>' + (prod ? prod.name : app.productId) + '</td>';
+          html += '<td>' + app.proposed_loan_amount + '</td>';
+          html += '<td>' + app.proposed_interest_rate + '</td>';
+          html += '<td>' + app.proposed_term_months + '</td>';
+          html += '<td>' + app.proposed_ltv_ratio + '</td>';
+          html += '<td>' + app.status + '</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      }
+      // New application form
+      html += '<h3 style="margin-top:1rem;">Submit New Application</h3>';
+      html += '<form id="create-application-form">';
+      html += '<div><label>Select Project</label><select name="projectId">';
+      projects.forEach(p => {
+        html += '<option value="' + p.id + '">' + (p.description || p.address) + ' (' + p.status + ')</option>';
+      });
+      html += '</select></div>';
+      html += '<div><label>Select Product</label><select name="productId">';
+      products.forEach(p => {
+        html += '<option value="' + p.id + '">' + p.name + ' (' + p.status + ')</option>';
+      });
+      html += '</select></div>';
+      html += '<div><label>Proposed Loan (£)</label><input type="number" name="loan" required></div>';
+      html += '<div><label>Proposed Interest Rate (%)</label><input type="number" step="0.01" name="interest" required></div>';
+      html += '<div><label>Proposed Term (months)</label><input type="number" name="term" required></div>';
+      html += '<div><label>Proposed LTV (%)</label><input type="number" name="ltv" required></div>';
+      html += '<button type="submit">Submit Application</button>';
+      html += '</form>';
+      container.innerHTML = html;
+      const form = document.getElementById('create-application-form');
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const data = new FormData(form);
+        const app = {
+          id: applicationIdCounter++,
+          projectId: parseInt(data.get('projectId')),
+          productId: parseInt(data.get('productId')),
+          proposed_loan_amount: parseFloat(data.get('loan')),
+          proposed_interest_rate: parseFloat(data.get('interest')),
+          proposed_term_months: parseInt(data.get('term'), 10),
+          proposed_ltv_ratio: parseFloat(data.get('ltv')),
+          status: 'pending',
+        };
+        applications.push(app);
+        renderLenderApplications();
+      });
+    }
+
+    // Lender: render private equity list and investment form
+    function renderLenderPE() {
+      const container = document.getElementById('lender-pe-content');
+      let html = '';
+      const approvedOpps = opportunities.filter(o => o.status === 'approved');
+      if (approvedOpps.length === 0) {
+        html += '<p>No approved opportunities available.</p>';
+      } else {
+        html += '<table><thead><tr>';
+        html += '<th>Title</th><th>Industry</th><th>Funding Required (£)</th><th>Valuation (£)</th><th>Share Offered (%)</th><th>Action</th>';
+        html += '</tr></thead><tbody>';
+        approvedOpps.forEach(o => {
+          html += '<tr>';
+          html += '<td>' + o.title + '</td>';
+          html += '<td>' + o.industry + '</td>';
+          html += '<td>' + o.funding_required + '</td>';
+          html += '<td>' + (o.valuation || '—') + '</td>';
+          html += '<td>' + o.share_offered + '</td>';
+          html += '<td>';
+          // Investment mini form per opportunity
+          html += '<form data-opid="' + o.id + '" class="invest-form">';
+          html += '<input type="number" name="amount" placeholder="Amount (£)" style="width:80px;margin-right:4px;" required>';
+          html += '<input type="number" name="share" step="0.01" placeholder="Share (%)" style="width:60px;margin-right:4px;" required>';
+          html += '<input type="text" name="notes" placeholder="Notes" style="width:120px;margin-right:4px;">';
+          html += '<button type="submit">Invest</button>';
+          html += '</form>';
+          html += '</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      }
+      // List of investments
+      html += '<h3 style="margin-top:1rem;">My Investments</h3>';
+      const ownInvs = investments.filter(inv => inv.lender === 'Lender1');
+      if (ownInvs.length === 0) {
+        html += '<p>No investments made yet.</p>';
+      } else {
+        html += '<table><thead><tr>';
+        html += '<th>Opportunity</th><th>Amount (£)</th><th>Share (%)</th><th>Status</th>';
+        html += '</tr></thead><tbody>';
+        ownInvs.forEach(inv => {
+          const opp = getOpportunityById(inv.opportunityId);
+          html += '<tr>';
+          html += '<td>' + (opp ? opp.title : inv.opportunityId) + '</td>';
+          html += '<td>' + inv.amount + '</td>';
+          html += '<td>' + inv.share + '</td>';
+          html += '<td>' + inv.status + '</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      }
+      container.innerHTML = html;
+      // Attach event handlers to each invest form
+      const investForms = container.querySelectorAll('form.invest-form');
+      investForms.forEach(form => {
+        form.addEventListener('submit', function(e) {
+          e.preventDefault();
+          const id = parseInt(this.getAttribute('data-opid'));
+          const data = new FormData(this);
+          const amount = parseFloat(data.get('amount'));
+          const share = parseFloat(data.get('share'));
+          const notes = data.get('notes') || '';
+          const inv = {
+            id: investmentIdCounter++,
+            opportunityId: id,
+            lender: 'Lender1',
+            amount: amount,
+            share: share,
+            notes: notes,
+            status: 'pending',
+          };
+          investments.push(inv);
+          renderLenderPE();
+        });
+      });
+    }
+
+    // Admin: render dashboard (pending projects and products)
+    function renderAdminDashboard() {
+      const container = document.getElementById('admin-dashboard-content');
+      let html = '<h3>Pending Projects</h3>';
+      const pendingProjects = projects.filter(p => p.status !== 'approved');
+      if (pendingProjects.length === 0) {
+        html += '<p>No pending projects.</p>';
+      } else {
+        html += '<table><thead><tr>';
+        html += '<th>Description</th><th>Funding</th><th>Term</th><th>Status</th><th>Action</th>';
+        html += '</tr></thead><tbody>';
+        pendingProjects.forEach(p => {
+          html += '<tr>';
+          html += '<td>' + (p.description || p.address) + '</td>';
+          html += '<td>' + p.loan_amount_required + '</td>';
+          html += '<td>' + p.term_required_months + '</td>';
+          html += '<td>' + p.status + '</td>';
+          html += '<td><button data-approve="project" data-id="' + p.id + '">Approve</button></td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      }
+      html += '<h3 style="margin-top:1rem;">Pending Products</h3>';
+      const pendingProducts = products.filter(p => p.status !== 'approved');
+      if (pendingProducts.length === 0) {
+        html += '<p>No pending products.</p>';
+      } else {
+        html += '<table><thead><tr>';
+        html += '<th>Name</th><th>Funding Type</th><th>Property Type</th><th>Loan Range</th><th>Status</th><th>Action</th>';
+        html += '</tr></thead><tbody>';
+        pendingProducts.forEach(p => {
+          html += '<tr>';
+          html += '<td>' + p.name + '</td>';
+          html += '<td>' + p.funding_type + '</td>';
+          html += '<td>' + p.property_type + '</td>';
+          html += '<td>' + p.min_loan_amount + ' - ' + p.max_loan_amount + '</td>';
+          html += '<td>' + p.status + '</td>';
+          html += '<td><button data-approve="product" data-id="' + p.id + '">Approve</button></td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      }
+      container.innerHTML = html;
+      // Attach event handler for approve buttons
+      container.querySelectorAll('button[data-approve]').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const type = this.getAttribute('data-approve');
+          const id = parseInt(this.getAttribute('data-id'));
+          if (type === 'project') {
+            const proj = getProjectById(id);
+            if (proj) proj.status = 'approved';
+          } else if (type === 'product') {
+            const prod = getProductById(id);
+            if (prod) prod.status = 'approved';
+          }
+          renderAdminDashboard();
+        });
+      });
+    }
+
+    // Admin: render private equity opportunities
+    function renderAdminPE() {
+      const container = document.getElementById('admin-pe-content');
+      let html = '';
+      if (opportunities.length === 0) {
+        html += '<p>No private equity opportunities found.</p>';
+      } else {
+        html += '<table><thead><tr>';
+        html += '<th>Title</th><th>Borrower</th><th>Funding Required (£)</th><th>Valuation (£)</th><th>Share Offered (%)</th><th>Status</th><th>Action</th>';
+        html += '</tr></thead><tbody>';
+        opportunities.forEach(o => {
+          html += '<tr>';
+          html += '<td>' + o.title + '</td>';
+          html += '<td>' + o.borrower + '</td>';
+          html += '<td>' + o.funding_required + '</td>';
+          html += '<td>' + (o.valuation || '—') + '</td>';
+          html += '<td>' + o.share_offered + '</td>';
+          html += '<td>' + o.status + '</td>';
+          html += '<td>';
+          if (o.status === 'approved') {
+            html += '—';
+          } else {
+            html += '<button data-oppid="' + o.id + '">Approve</button>';
+          }
+          html += '</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      }
+      container.innerHTML = html;
+      container.querySelectorAll('button[data-oppid]').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const id = parseInt(this.getAttribute('data-oppid'));
+          const opp = getOpportunityById(id);
+          if (opp) opp.status = 'approved';
+          renderAdminPE();
+        });
+      });
+    }
+
+    // Initialisation
+    document.addEventListener('DOMContentLoaded', function() {
+      let currentRole = 'borrower';
+      showRoleNav(currentRole);
+      // Show default page for borrower
+      showPage('borrower-projects');
+      renderBorrowerProjects();
+      // Role selector
+      document.getElementById('role-select').addEventListener('change', function() {
+        currentRole = this.value;
+        showRoleNav(currentRole);
+        // Show first page for each role
+        if (currentRole === 'borrower') {
+          showPage('borrower-projects');
+          renderBorrowerProjects();
+        } else if (currentRole === 'lender') {
+          showPage('lender-products');
+          renderLenderProducts();
+        } else if (currentRole === 'admin') {
+          showPage('admin-dashboard');
+          renderAdminDashboard();
+        }
+      });
+      // Nav click handlers
+      document.querySelectorAll('nav.role-nav a').forEach(link => {
+        link.addEventListener('click', function(e) {
+          e.preventDefault();
+          const page = this.getAttribute('data-page');
+          showPage(page);
+          if (page === 'borrower-projects') renderBorrowerProjects();
+          else if (page === 'borrower-matches') renderBorrowerMatches();
+          else if (page === 'borrower-pe') renderBorrowerPE();
+          else if (page === 'lender-products') renderLenderProducts();
+          else if (page === 'lender-applications') renderLenderApplications();
+          else if (page === 'lender-pe') renderLenderPE();
+          else if (page === 'admin-dashboard') renderAdminDashboard();
+          else if (page === 'admin-pe') renderAdminPE();
+        });
+      });
+    });
+  </script>
+</body>
+</html>

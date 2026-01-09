@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>BuildFund Deployment Guide</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; line-height: 1.6; }
+        h1 { font-size: 24px; margin-bottom: 0.5rem; }
+        h2 { font-size: 20px; margin-top: 1.5rem; }
+        ul { margin-left: 1.5rem; }
+        li { margin-bottom: 0.5rem; }
+        code { background: #f4f4f4; padding: 0.2rem 0.4rem; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>BuildFund Deployment Guide</h1>
+    <p>This short guide walks you through unpacking and launching the BuildFund platform on a MongoDB backend. Follow each step in order to set up both the back‑end (Django) and front‑end (React) services and make them ready for production use.</p>
+
+    <h2>Prerequisites</h2>
+    <ul>
+        <li>A running <strong>MongoDB</strong> instance (local or hosted) with a database created for BuildFund.</li>
+        <li><strong>Python 3.10+</strong> and <strong>Node.js with npm</strong> installed.</li>
+        <li>Access to <strong>OpenAI</strong> and <strong>Google Maps Platform</strong> API keys. These will be added to your environment configuration and must never be exposed in client code【637421499612537†L23-L31】【422390506697459†L266-L276】.</li>
+    </ul>
+
+    <h2>1. Unpack the Project</h2>
+    <ul>
+        <li>Download <code>buildfund_mongo.zip</code> and extract its contents into a working directory.</li>
+        <li>The archive contains two main folders:
+            <ul>
+                <li><code>buildfund_webapp/</code> – Django back‑end code.</li>
+                <li><code>new_website/</code> – React front‑end code.</li>
+            </ul>
+        </li>
+    </ul>
+
+    <h2>2. Configure the Back‑end</h2>
+    <ul>
+        <li>Open a terminal and navigate to the <code>buildfund_webapp/</code> directory.</li>
+        <li>Create and activate a virtual environment:
+            <pre><code>python3 -m venv venv
+source venv/bin/activate</code></pre>
+        </li>
+        <li>Install the Python dependencies:
+            <pre><code>pip install -r requirements.txt</code></pre>
+        </li>
+        <li>Copy the environment template and set your configuration:
+            <pre><code>cp .env.example .env</code></pre>
+            Edit <code>.env</code> to provide:
+            <ul>
+                <li><code>DJANGO_SECRET_KEY</code> – a unique secret string.</li>
+                <li><code>DB_ENGINE=djongo</code>, <code>DB_NAME</code>, <code>DB_HOST</code>, <code>DB_PORT</code>, and optional <code>DB_USER</code>/<code>DB_PASSWORD</code> matching your MongoDB instance.</li>
+                <li><code>OPENAI_API_KEY</code> – your OpenAI secret key for AI underwriting.</li>
+                <li><code>GOOGLE_API_KEY</code> – your Google Maps/Places API key with proper restrictions【422390506697459†L266-L276】.</li>
+                <li><code>CORS_ALLOWED_ORIGINS</code> – the URL of your front‑end (e.g. <code>http://localhost:3000</code>).</li>
+            </ul>
+        </li>
+        <li>Set up the database schema using the provided script:
+            <pre><code>chmod +x scripts/setup_mongo.sh
+./scripts/setup_mongo.sh</code></pre>
+        </li>
+        <li>Create an administrative user:
+            <pre><code>python manage.py createsuperuser</code></pre>
+        </li>
+        <li>Start the Django server:
+            <pre><code>python manage.py runserver 0.0.0.0:8000</code></pre>
+            The API will be available at <code>http://localhost:8000/api/</code>.</li>
+    </ul>
+
+    <h2>3. Configure the Front‑end</h2>
+    <ul>
+        <li>In a new terminal, navigate to <code>new_website/</code>.</li>
+        <li>Install the JavaScript dependencies:
+            <pre><code>npm install</code></pre>
+        </li>
+        <li>If your API is not running on <code>http://localhost:8000</code>, create a <code>.env</code> file with:
+            <pre><code>REACT_APP_API_BASE_URL=http://your-api-host:8000</code></pre>
+        </li>
+        <li>Start the development server:
+            <pre><code>npm start</code></pre>
+            This will serve the front‑end on <code>http://localhost:3000</code> by default.</li>
+        <li>For production, build the static site:
+            <pre><code>npm run build</code></pre>
+            and serve the contents of the <code>build/</code> directory using a web server such as Nginx.</li>
+    </ul>
+
+    <h2>4. First‑time Setup</h2>
+    <ul>
+        <li>Log in to the back‑end admin interface at <code>/admin/</code> using the superuser credentials.</li>
+        <li>Use the admin pages to add borrower and lender roles to users, approve products and projects, and manage underwriting reports.</li>
+        <li>When users sign in through the front‑end, their role determines which dashboard they see (Borrower, Lender or Admin).</li>
+    </ul>
+
+    <h2>5. Security and Best Practices</h2>
+    <ul>
+        <li>Always keep your API keys out of client code. Both OpenAI and Google require keys to be stored server‑side and passed only in back‑end requests【637421499612537†L23-L31】.</li>
+        <li>Restrict your Google Maps API key to the domains and IP addresses of your servers【422390506697459†L266-L276】.</li>
+        <li>Use HTTPS in production and configure secure cookies (SESSION_COOKIE_SECURE, CSRF_COOKIE_SECURE).</li>
+        <li>Configure proper CORS rules in the <code>.env</code> to allow only your front‑end domain.</li>
+    </ul>
+
+    <h2>6. Troubleshooting</h2>
+    <ul>
+        <li>If migrations fail, ensure the MongoDB server is running and credentials are correct. Djongo requires MongoDB version 4.0+.</li>
+        <li>Check that the `.env` file is loaded—missing keys will cause the API to return errors when generating underwriting reports or geocoding addresses.</li>
+        <li>Review the server logs for more detailed error messages.</li>
+    </ul>
+
+    <p>Once the back‑end and front‑end are running, your BuildFund platform will be available locally. Deploy the API and UI to production servers as you would any Django/React application, ensuring environment variables and keys are set appropriately.</p>
+</body>
+</html>
