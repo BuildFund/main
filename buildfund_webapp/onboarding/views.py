@@ -5,6 +5,7 @@ import uuid
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.utils import timezone
 
 from .models import OnboardingProgress, OnboardingData, OnboardingSession
@@ -17,6 +18,7 @@ from .serializers import (
 from .services import OnboardingChatbotService, AddressVerificationService
 from verification.services import HMRCVerificationService
 from accounts.models import Role, UserRole
+from consultants.models import ConsultantProfile
 
 
 class OnboardingViewSet(viewsets.ViewSet):
@@ -27,8 +29,33 @@ class OnboardingViewSet(viewsets.ViewSet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.chatbot_service = OnboardingChatbotService()
-        self.address_service = AddressVerificationService()
-        self.hmrc_service = HMRCVerificationService()
+        # Initialize services lazily to avoid errors if API keys are missing
+        self._address_service = None
+        self._hmrc_service = None
+    
+    @property
+    def address_service(self):
+        """Lazy initialization of address service."""
+        if self._address_service is None:
+            try:
+                self._address_service = AddressVerificationService()
+            except ValueError as e:
+                # If Google API key is missing, create a dummy service that will fail gracefully
+                print(f"Warning: AddressVerificationService not available: {e}")
+                self._address_service = None
+        return self._address_service
+    
+    @property
+    def hmrc_service(self):
+        """Lazy initialization of HMRC service."""
+        if self._hmrc_service is None:
+            try:
+                self._hmrc_service = HMRCVerificationService()
+            except ValueError as e:
+                # If HMRC API key is missing, create a dummy service that will fail gracefully
+                print(f"Warning: HMRCVerificationService not available: {e}")
+                self._hmrc_service = None
+        return self._hmrc_service
     
     @action(detail=False, methods=["get"])
     def progress(self, request):
@@ -52,6 +79,8 @@ class OnboardingViewSet(viewsets.ViewSet):
             role_names = [ur.role.name for ur in user_roles]
             if "Lender" in role_names:
                 user_role = "Lender"
+            elif "Consultant" in role_names:
+                user_role = "Consultant"
             elif "Admin" in role_names:
                 user_role = "Admin"
         
@@ -280,6 +309,10 @@ class OnboardingViewSet(viewsets.ViewSet):
             collected_data["first_name"] = message
             return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
         
+        elif step == "profile_last_name":
+            collected_data["last_name"] = message
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
         elif step == "profile_dob":
             # Parse date (DD/MM/YYYY)
             try:
@@ -288,6 +321,10 @@ class OnboardingViewSet(viewsets.ViewSet):
                 collected_data["date_of_birth"] = date_obj.strftime("%Y-%m-%d")
             except:
                 pass  # Invalid date, will ask again
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "contact_email":
+            collected_data["email"] = message
             return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
         
         elif step == "contact_phone":
@@ -382,16 +419,363 @@ class OnboardingViewSet(viewsets.ViewSet):
             # Otherwise, continue to next step
             return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
         
+        elif step == "address_verification":
+            if message_lower in ["yes", "yes, that's correct", "correct", "yes that's correct"]:
+                # Use the verified address
+                addr_data = collected_data.get("address_verification_data", {})
+                components = addr_data.get("components", {})
+                collected_data["address_line_1"] = components.get("route", "") or addr_data.get("formatted_address", "").split(",")[0]
+                collected_data["town"] = components.get("town", "")
+                collected_data["county"] = components.get("county", "")
+                collected_data["postcode"] = components.get("postcode", "") or collected_data.get("postcode", "")
+                return "address_confirmation" if "address_confirmation" in steps else (steps[current_index + 1] if current_index < len(steps) - 1 else "complete")
+            else:
+                # User wants to enter manually
+                return "address_confirmation" if "address_confirmation" in steps else (steps[current_index + 1] if current_index < len(steps) - 1 else "complete")
+        
+        elif step == "address_confirmation":
+            collected_data["address_line_1"] = message
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
         elif step == "company_collection":
             if message_lower not in ["skip", "none", "n/a"]:
                 collected_data["company_registration_number"] = message
-                # Verify company
-                company_name = collected_data.get("company_name", "")
-                verification = self.hmrc_service.verify_company(message, company_name)
-                collected_data["company_verification_data"] = verification
-                if verification.get("verified"):
-                    return "company_verification"
+                # Verify company with Companies House
+                if self.hmrc_service:
+                    company_name = collected_data.get("company_name", "")
+                    verification = self.hmrc_service.verify_company(message, company_name)
+                    collected_data["company_verification_data"] = verification
+                    
+                    # Get directors list from Companies House
+                    if verification.get("verified"):
+                        company_info = verification.get("company_info", {})
+                        company_number = message
+                        officers_data = self.hmrc_service.get_company_officers(company_number)
+                        if "error" not in officers_data:
+                            directors = officers_data.get("items", [])
+                            collected_data["company_verification_data"]["directors"] = directors
+                            collected_data["company_verification_data"]["company_info"] = company_info
+                            return "company_verification"
             return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "company_verification":
+            if message_lower in ["yes", "yes, that's correct", "correct", "yes that's correct"]:
+                # Store company name from verification
+                comp_data = collected_data.get("company_verification_data", {})
+                comp_info = comp_data.get("company_info", {})
+                collected_data["company_name"] = comp_info.get("company_name", "")
+                return "company_confirmation" if "company_confirmation" in steps else (steps[current_index + 1] if current_index < len(steps) - 1 else "complete")
+            else:
+                return "company_collection"  # Go back to ask for company number again
+        
+        elif step == "company_confirmation":
+            collected_data["company_name"] = message
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "directors_list":
+            if message_lower in ["yes", "yes, i'm ready", "ready", "yes i'm ready to provide director details"]:
+                # Initialize directors collection
+                collected_data["directors_collected"] = []
+                directors = collected_data.get("company_verification_data", {}).get("directors", [])
+                if directors:
+                    return "director_details"  # Start collecting director details
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "director_details":
+            # Parse director details: "Name, DOB, Nationality"
+            directors_collected = collected_data.get("directors_collected", [])
+            directors = collected_data.get("company_verification_data", {}).get("directors", [])
+            
+            # Parse the input
+            parts = [p.strip() for p in message.split(",")]
+            director_data = {
+                "name": parts[0] if len(parts) > 0 else message,
+                "date_of_birth": parts[1] if len(parts) > 1 else None,
+                "nationality": parts[2] if len(parts) > 2 else None,
+            }
+            
+            # Verify director with HMRC if service available
+            if self.hmrc_service and collected_data.get("company_registration_number"):
+                company_number = collected_data["company_registration_number"]
+                dob_str = None
+                if director_data["date_of_birth"]:
+                    try:
+                        from datetime import datetime
+                        dob_obj = datetime.strptime(director_data["date_of_birth"], "%d/%m/%Y")
+                        dob_str = dob_obj.strftime("%Y-%m-%d")
+                    except:
+                        pass
+                
+                verification = self.hmrc_service.verify_director(
+                    company_number,
+                    director_data["name"],
+                    dob_str
+                )
+                director_data["verification"] = verification
+            
+            directors_collected.append(director_data)
+            collected_data["directors_collected"] = directors_collected
+            
+            # Check if we need to collect more directors
+            if len(directors_collected) < len(directors):
+                return "director_details"  # Continue collecting
+            else:
+                # All directors collected, move to next step
+                return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        # KYC and Financial Information (Borrowers)
+        elif step == "kyc_nationality":
+            collected_data["nationality"] = message
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "kyc_national_insurance":
+            if message_lower not in ["skip", "none", "n/a"]:
+                collected_data["national_insurance_number"] = message
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "kyc_source_of_funds":
+            collected_data["source_of_funds"] = message
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "financial_income":
+            try:
+                collected_data["annual_income"] = float(message.replace(",", "").replace("£", ""))
+            except:
+                pass
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "financial_employment":
+            collected_data["employment_status"] = message
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "financial_employment_details":
+            if message_lower not in ["skip", "none", "n/a"]:
+                # Parse "Company Name, Position"
+                parts = [p.strip() for p in message.split(",")]
+                collected_data["employment_company"] = parts[0] if len(parts) > 0 else message
+                collected_data["employment_position"] = parts[1] if len(parts) > 1 else ""
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "financial_expenses":
+            try:
+                collected_data["monthly_expenses"] = float(message.replace(",", "").replace("£", ""))
+            except:
+                pass
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "financial_existing_debts":
+            try:
+                collected_data["existing_debts"] = float(message.replace(",", "").replace("£", ""))
+            except:
+                collected_data["existing_debts"] = 0
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "financial_assets":
+            try:
+                collected_data["total_assets"] = float(message.replace(",", "").replace("£", ""))
+            except:
+                pass
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        # Asset & Liability Statement
+        elif step == "assets_real_estate":
+            try:
+                collected_data["assets_real_estate"] = float(message.replace(",", "").replace("£", ""))
+            except:
+                collected_data["assets_real_estate"] = 0
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "assets_investments":
+            try:
+                collected_data["assets_investments"] = float(message.replace(",", "").replace("£", ""))
+            except:
+                collected_data["assets_investments"] = 0
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "assets_other":
+            try:
+                collected_data["assets_other"] = float(message.replace(",", "").replace("£", ""))
+            except:
+                collected_data["assets_other"] = 0
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "liabilities_mortgages":
+            try:
+                collected_data["liabilities_mortgages"] = float(message.replace(",", "").replace("£", ""))
+            except:
+                collected_data["liabilities_mortgages"] = 0
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "liabilities_loans":
+            try:
+                collected_data["liabilities_loans"] = float(message.replace(",", "").replace("£", ""))
+            except:
+                collected_data["liabilities_loans"] = 0
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "liabilities_other":
+            try:
+                collected_data["liabilities_other"] = float(message.replace(",", "").replace("£", ""))
+            except:
+                collected_data["liabilities_other"] = 0
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "assets_liabilities_summary":
+            if message_lower in ["yes", "yes, that's correct", "correct", "yes that's correct"]:
+                # Store calculated values
+                total_assets = (
+                    float(collected_data.get("assets_real_estate", 0) or 0) +
+                    float(collected_data.get("assets_investments", 0) or 0) +
+                    float(collected_data.get("assets_other", 0) or 0) +
+                    float(collected_data.get("total_assets", 0) or 0)
+                )
+                total_liabilities = (
+                    float(collected_data.get("liabilities_mortgages", 0) or 0) +
+                    float(collected_data.get("liabilities_loans", 0) or 0) +
+                    float(collected_data.get("liabilities_other", 0) or 0) +
+                    float(collected_data.get("existing_debts", 0) or 0)
+                )
+                collected_data["total_assets_calculated"] = total_assets
+                collected_data["total_liabilities_calculated"] = total_liabilities
+                collected_data["net_worth_calculated"] = total_assets - total_liabilities
+                return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+            else:
+                # Go back to assets section
+                return "assets_real_estate"
+        
+        elif step == "experience_collection":
+            try:
+                collected_data["experience_years"] = int(message)
+            except:
+                pass
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "experience_projects":
+            try:
+                collected_data["previous_projects"] = int(message)
+            except:
+                collected_data["previous_projects"] = 0
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "portfolio_current_assets":
+            if message_lower not in ["skip", "none", "n/a", "no"]:
+                collected_data["portfolio_description"] = message
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "portfolio_property_details":
+            if message_lower not in ["skip", "none", "n/a", "no"]:
+                collected_data["portfolio_property_details"] = message
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "funding_type_selection":
+            # Store selected funding type
+            collected_data["funding_type"] = message
+            # Get funding type specific questions
+            funding_questions = self.chatbot_service.get_funding_type_specific_questions(message)
+            if funding_questions:
+                # Store questions to ask
+                collected_data["funding_type_questions"] = funding_questions
+                collected_data["current_funding_question_index"] = 0
+                # Move to first funding-specific question
+                return funding_questions[0]["step"]
+            else:
+                # No additional questions, proceed to documents
+                return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        # Handle funding type specific questions dynamically
+        elif step.startswith("revenue_based_") or step.startswith("mca_") or step.startswith("ip_") or \
+             step.startswith("stock_") or step.startswith("asset_") or step.startswith("factoring_") or \
+             step.startswith("trade_") or step.startswith("export_") or step.startswith("property_"):
+            # Find the question in funding_type_questions
+            funding_questions = collected_data.get("funding_type_questions", [])
+            current_index_funding = collected_data.get("current_funding_question_index", 0)
+            
+            # Store the answer
+            for q in funding_questions:
+                if q["step"] == step:
+                    field = q.get("field")
+                    if field:
+                        if q["type"] == "number":
+                            try:
+                                collected_data[field] = float(message.replace(",", "").replace("£", ""))
+                            except:
+                                pass
+                        else:
+                            collected_data[field] = message
+                    break
+            
+            # Move to next funding question or proceed
+            current_index_funding += 1
+            collected_data["current_funding_question_index"] = current_index_funding
+            
+            if current_index_funding < len(funding_questions):
+                # More questions to ask
+                return funding_questions[current_index_funding]["step"]
+            else:
+                # All funding questions answered, proceed to documents
+                return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        # FCA and Financial Information (Lenders)
+        elif step == "fca_registration":
+            collected_data["has_fca_registration"] = message_lower in ["yes", "y"]
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "fca_registration_number":
+            if message_lower not in ["skip", "none", "n/a"]:
+                collected_data["fca_registration_number"] = message
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "fca_permissions":
+            if message_lower not in ["skip", "none", "n/a"]:
+                collected_data["fca_permissions"] = message
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "financial_licences":
+            if message_lower not in ["skip", "none", "n/a"]:
+                collected_data["financial_licences"] = message
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "financial_capital_requirements":
+            try:
+                collected_data["regulatory_capital"] = float(message.replace(",", "").replace("£", ""))
+            except:
+                pass
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "financial_lending_capacity":
+            try:
+                collected_data["lending_capacity"] = float(message.replace(",", "").replace("£", ""))
+            except:
+                pass
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "key_personnel":
+            if message_lower not in ["skip", "none", "n/a"]:
+                collected_data["key_personnel"] = message
+            return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+        
+        elif step == "documents_collection":
+            # Check if documents were uploaded
+            # This step is handled by file upload, but we need to verify documents are uploaded
+            # For now, if user sends a message, check document status
+            if message_lower in ["done", "finished", "complete", "all uploaded", "uploaded"]:
+                # Check if all required documents are uploaded
+                doc_status = self.chatbot_service.check_uploaded_documents(collected_data, user_role)
+                if doc_status["all_uploaded"]:
+                    return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+                else:
+                    # Still missing documents, stay on this step
+                    return "documents_collection"
+            else:
+                # User might be trying to skip or provide text response
+                # Check document status
+                doc_status = self.chatbot_service.check_uploaded_documents(collected_data, user_role)
+                if doc_status["all_uploaded"]:
+                    # All documents uploaded, can proceed
+                    return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
+                else:
+                    # Missing documents, remind and stay on this step
+                    return "documents_collection"
         
         # Default: move to next step
         if current_index < len(steps) - 1:
@@ -424,11 +808,80 @@ class OnboardingViewSet(viewsets.ViewSet):
             
             # Calculate overall progress
             progress.calculate_progress()
+            
+            # Auto-create ConsultantProfile if onboarding is complete and user is a Consultant
+            if progress.is_complete and user:
+                user_roles = UserRole.objects.filter(user=user).select_related("role")
+                if user_roles.exists():
+                    role_names = [ur.role.name for ur in user_roles]
+                    if "Consultant" in role_names and not hasattr(user, "consultantprofile"):
+                        self._create_consultant_profile(user, collected_data)
         except Exception as e:
             import traceback
             print(f"Error in _update_progress: {e}")
             print(traceback.format_exc())
             # Don't raise - just log the error
+    
+    @action(detail=False, methods=["post"], parser_classes=[MultiPartParser, FormParser])
+    def upload_documents(self, request):
+        """Upload documents for onboarding."""
+        from documents.models import Document
+        
+        user = request.user
+        files = request.FILES.getlist('files')
+        
+        if not files:
+            return Response(
+                {"error": "No files provided"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get or create onboarding data
+        onboarding_data, _ = OnboardingData.objects.get_or_create(user=user)
+        
+        uploaded_documents = []
+        for file in files:
+            # Create document record
+            document = Document.objects.create(
+                owner=user,
+                file_name=file.name,
+                file_size=file.size,
+                file_type=file.content_type or "application/octet-stream",
+                upload_path=f"onboarding/{user.id}/{file.name}",
+                description=f"Onboarding document: {file.name}",
+            )
+            
+            # Link to onboarding data
+            onboarding_data.documents_uploaded.add(document)
+            uploaded_documents.append({
+                "id": document.id,
+                "file_name": document.file_name,
+                "file_type": document.file_type,
+            })
+        
+        onboarding_data.save()
+        
+        # Update session collected_data
+        session = OnboardingSession.objects.filter(user=user, is_active=True).first()
+        if session:
+            collected_data = session.collected_data or {}
+            if "documents_uploaded" not in collected_data:
+                collected_data["documents_uploaded"] = []
+            collected_data["documents_uploaded"].extend(uploaded_documents)
+            session.collected_data = collected_data
+            session.save()
+        
+        # Check document status
+        doc_status = self.chatbot_service.check_uploaded_documents(
+            collected_data if session else {},
+            "Borrower"  # Default to Borrower for now
+        )
+        
+        return Response({
+            "message": f"Successfully uploaded {len(uploaded_documents)} document(s)",
+            "documents": uploaded_documents,
+            "document_status": doc_status,
+        }, status=status.HTTP_201_CREATED)
     
     @action(detail=False, methods=["post"])
     def save_data(self, request):
@@ -445,6 +898,9 @@ class OnboardingViewSet(viewsets.ViewSet):
             "address_line_1", "address_line_2", "postcode", "town", "county", "country",
             "company_name", "company_registration_number", "company_type",
             "annual_income", "employment_status", "monthly_expenses",
+            "assets_real_estate", "assets_investments", "assets_other",
+            "liabilities_mortgages", "liabilities_loans", "liabilities_other",
+            "experience_years", "previous_projects", "portfolio_description", "portfolio_property_details",
         ]:
             if field in data:
                 setattr(onboarding_data, field, data[field])
@@ -477,7 +933,15 @@ class OnboardingViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        verification = self.address_service.verify_address(address_line_1, postcode, town)
+        if not self.address_service:
+            # If address service is not available, skip verification
+            collected_data["address_verification_data"] = {
+                "verified": False,
+                "message": "Address verification service not available"
+            }
+            verification = collected_data["address_verification_data"]
+        else:
+            verification = self.address_service.verify_address(address_line_1, postcode, town)
         return Response(verification)
     
     @action(detail=False, methods=["post"])
@@ -494,3 +958,39 @@ class OnboardingViewSet(viewsets.ViewSet):
         
         verification = self.hmrc_service.verify_company(company_number, company_name)
         return Response(verification)
+    
+    def _create_consultant_profile(self, user, collected_data: dict):
+        """Auto-create ConsultantProfile after onboarding completion for Consultants."""
+        try:
+            # Extract consultant-specific data from onboarding
+            ConsultantProfile.objects.get_or_create(
+                user=user,
+                defaults={
+                    'organisation_name': collected_data.get('company_name', '') or collected_data.get('organisation_name', '') or f"{collected_data.get('first_name', '')} {collected_data.get('last_name', '')}".strip() or 'Consultant',
+                    'trading_name': collected_data.get('trading_name', ''),
+                    'company_registration_number': collected_data.get('company_registration_number', ''),
+                    'primary_service': collected_data.get('consultant_type', 'other'),
+                    'services_offered': collected_data.get('services_offered', []),
+                    'qualifications': collected_data.get('qualifications', []),
+                    'contact_email': collected_data.get('email', user.email),
+                    'contact_phone': collected_data.get('phone_number', '') or collected_data.get('mobile_number', ''),
+                    'address_line_1': collected_data.get('address_line_1', ''),
+                    'city': collected_data.get('city', ''),
+                    'county': collected_data.get('county', ''),
+                    'postcode': collected_data.get('postcode', ''),
+                    'country': collected_data.get('country', 'United Kingdom'),
+                    'geographic_coverage': collected_data.get('geographic_coverage', []),
+                    'years_of_experience': collected_data.get('years_of_experience'),
+                    'team_size': collected_data.get('team_size'),
+                    'max_capacity': collected_data.get('max_capacity', 10),
+                    'current_capacity': 0,
+                    'average_response_time_days': collected_data.get('average_response_time_days', 5),
+                    'is_active': True,
+                    'is_verified': False,  # Will need admin verification
+                }
+            )
+        except Exception as e:
+            import traceback
+            print(f"Error creating ConsultantProfile: {e}")
+            print(traceback.format_exc())
+            # Don't raise - just log the error

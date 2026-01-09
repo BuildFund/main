@@ -4,7 +4,7 @@ from __future__ import annotations
 from rest_framework import serializers
 from core.validators import sanitize_string, validate_numeric_input
 
-from .models import Product
+from .models import Product, FavouriteProduct
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -27,7 +27,6 @@ class ProductSerializer(serializers.ModelSerializer):
             "term_max_months",
             "max_ltv_ratio",
             "repayment_structure",
-            "fees",
             "eligibility_criteria",
             "status",
             "created_at",
@@ -122,4 +121,61 @@ class ProductSerializer(serializers.ModelSerializer):
         if request is None or not hasattr(request.user, "lenderprofile"):
             raise serializers.ValidationError("Only lenders can create products.")
         validated_data["lender"] = request.user.lenderprofile
+        return super().create(validated_data)
+    
+    def to_representation(self, instance):
+        """Add lender details to the serialized output."""
+        data = super().to_representation(instance)
+        if instance.lender:
+            data['lender_details'] = {
+                'id': instance.lender.id,
+                'organisation_name': instance.lender.organisation_name,
+                'contact_email': instance.lender.contact_email,
+                'contact_phone': instance.lender.contact_phone,
+            }
+        return data
+
+
+class FavouriteProductSerializer(serializers.ModelSerializer):
+    """Serializer for FavouriteProduct."""
+    
+    product = ProductSerializer(read_only=True)
+    product_id = serializers.IntegerField(write_only=True)
+    project_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    
+    class Meta:
+        model = FavouriteProduct
+        fields = [
+            "id",
+            "borrower",
+            "product",
+            "product_id",
+            "project",
+            "project_id",
+            "notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "borrower", "product", "project", "created_at", "updated_at"]
+    
+    def create(self, validated_data):
+        """Create a favourite product for the current borrower."""
+        request = self.context.get("request")
+        if not request or not hasattr(request.user, "borrowerprofile"):
+            raise serializers.ValidationError("Only borrowers can favourite products.")
+        
+        validated_data["borrower"] = request.user.borrowerprofile
+        product_id = validated_data.pop("product_id")
+        project_id = validated_data.pop("project_id", None)
+        
+        from products.models import Product
+        from projects.models import Project
+        
+        product = Product.objects.get(id=product_id)
+        validated_data["product"] = product
+        
+        if project_id:
+            project = Project.objects.get(id=project_id)
+            validated_data["project"] = project
+        
         return super().create(validated_data)

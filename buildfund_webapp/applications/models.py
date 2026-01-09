@@ -53,6 +53,21 @@ class Application(models.Model):
         blank=True,
         help_text="Feedback or notes about the current status (e.g., reason for decline, information required)"
     )
+    # Borrower consent to share information
+    borrower_consent_given = models.BooleanField(
+        default=False,
+        help_text="Whether borrower has given consent to share their information with the lender"
+    )
+    borrower_consent_given_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When borrower gave consent"
+    )
+    borrower_consent_withdrawn_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When borrower withdrew consent (if applicable)"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     status_changed_at = models.DateTimeField(null=True, blank=True)
@@ -124,6 +139,10 @@ class ApplicationDocument(models.Model):
         help_text="Optional description of the document"
     )
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    is_required = models.BooleanField(
+        default=False,
+        help_text="Whether this document is required for the application"
+    )
     
     class Meta:
         ordering = ["-uploaded_at"]
@@ -131,3 +150,80 @@ class ApplicationDocument(models.Model):
     
     def __str__(self) -> str:
         return f"ApplicationDocument({self.application.id} - {self.document.file_name})"
+
+
+class ApplicationUnderwriting(models.Model):
+    """Stores AI underwriting assessment results for an application."""
+    
+    application = models.OneToOneField(
+        Application,
+        related_name="underwriting",
+        on_delete=models.CASCADE
+    )
+    
+    # Overall assessment
+    risk_score = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Overall risk score (0-100, lower is better)"
+    )
+    recommendation = models.CharField(
+        max_length=50,
+        choices=[
+            ("approve", "Approve"),
+            ("approve_with_conditions", "Approve with Conditions"),
+            ("refer", "Refer for Manual Review"),
+            ("decline", "Decline"),
+        ],
+        blank=True
+    )
+    
+    # Assessment details
+    assessment_summary = models.TextField(
+        blank=True,
+        help_text="Summary of AI assessment"
+    )
+    key_findings = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of key findings from document analysis"
+    )
+    strengths = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of application strengths"
+    )
+    concerns = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of concerns or risk factors"
+    )
+    recommendations = models.TextField(
+        blank=True,
+        help_text="Recommendations for lender"
+    )
+    
+    # Document analysis
+    documents_analyzed = models.IntegerField(default=0)
+    documents_valid = models.IntegerField(default=0)
+    documents_invalid = models.IntegerField(default=0)
+    documents_pending = models.IntegerField(default=0)
+    
+    # Metadata
+    assessed_at = models.DateTimeField(auto_now_add=True)
+    assessed_by = models.CharField(
+        max_length=50,
+        default="ai_system",
+        help_text="System or user who performed the assessment"
+    )
+    assessment_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Full assessment data from AI system"
+    )
+    
+    class Meta:
+        ordering = ["-assessed_at"]
+    
+    def __str__(self) -> str:
+        return f"Underwriting({self.application.id} - {self.recommendation or 'Pending'})"

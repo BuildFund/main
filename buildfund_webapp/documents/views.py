@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 
-from .models import Document
+from .models import Document, DocumentType
 from .serializers import DocumentSerializer
 
 
@@ -18,7 +18,21 @@ class DocumentViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
-        return Document.objects.filter(owner=self.request.user)
+        """Return documents owned by the current user."""
+        return Document.objects.filter(owner=self.request.user).order_by('-uploaded_at')
+    
+    def list(self, request, *args, **kwargs):
+        """List documents with error handling."""
+        try:
+            return super().list(request, *args, **kwargs)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in DocumentViewSet.list: {e}", exc_info=True)
+            return Response(
+                {"error": f"Failed to load documents: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
@@ -50,3 +64,37 @@ class DocumentViewSet(viewsets.ModelViewSet):
             "message": f"Successfully uploaded {len(uploaded_documents)} file(s)",
             "documents": uploaded_documents,
         }, status=status.HTTP_201_CREATED)
+
+
+class DocumentTypeViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet for listing document types."""
+    
+    queryset = DocumentType.objects.all()
+    serializer_class = None  # We'll return simple dict
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def list(self, request):
+        """List all document types."""
+        loan_type = request.query_params.get("loan_type", "business_finance")
+        
+        # Filter document types based on loan type
+        doc_types = DocumentType.objects.filter(
+            required_for_loan_types__contains=[loan_type]
+        ) | DocumentType.objects.filter(
+            required_for_loan_types__len=0  # Also include types not specific to loan types
+        )
+        
+        doc_types_data = [
+            {
+                "id": dt.id,
+                "name": dt.name,
+                "category": dt.category,
+                "description": dt.description,
+                "is_required": dt.is_required,
+                "max_file_size_mb": dt.max_file_size_mb,
+                "allowed_file_types": dt.allowed_file_types,
+            }
+            for dt in doc_types.distinct()
+        ]
+        
+        return Response(doc_types_data)

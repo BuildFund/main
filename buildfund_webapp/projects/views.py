@@ -1,6 +1,7 @@
 """Views for project management."""
 from __future__ import annotations
 
+from django.db.models import Q
 from rest_framework import permissions, viewsets, status
 from rest_framework.decorators import action  # type: ignore
 from rest_framework.response import Response
@@ -81,52 +82,78 @@ class ProjectViewSet(viewsets.ModelViewSet):
         are considered.  Results are sorted by how closely they fit the
         requested loan amount and term.
         """
-        project = self.get_object()
-        from products.models import Product  # import here to avoid circular dependency
-        from decimal import Decimal
+        try:
+            project = self.get_object()
+            from products.models import Product  # import here to avoid circular dependency
+            from decimal import Decimal
 
-        # Base queryset: active products matching funding and property type
-        qs = Product.objects.filter(
-            status="active",
-            funding_type=project.funding_type,
-            property_type=project.property_type,
-        )
-        # Filter by loan amount and term
-        qs = qs.filter(
-            min_loan_amount__lte=project.loan_amount_required,
-            max_loan_amount__gte=project.loan_amount_required,
-            term_min_months__lte=project.term_required_months,
-            term_max_months__gte=project.term_required_months,
-        )
-        
-        # Filter by LTV ratio if project has a calculable LTV
-        project_ltv = project.calculate_ltv_ratio()
-        if project_ltv is not None:
-            # Only include products where the product's max LTV is >= project's LTV
-            qs = qs.filter(max_ltv_ratio__gte=Decimal(str(project_ltv)))
-        
-        # Compute match score (combination of loan amount proximity and LTV fit)
-        def score(product: Product) -> float:
-            # Loan amount match score (lower is better)
-            median = (product.min_loan_amount + product.max_loan_amount) / 2
-            loan_diff = abs(float(median) - float(project.loan_amount_required))
+            # Base queryset: active products matching funding type
+            qs = Product.objects.filter(
+                status="active",
+                funding_type=project.funding_type,
+            )
             
-            # LTV match score (prefer products with max LTV closer to project LTV)
-            ltv_score = 0.0
+            # For property-based funding types, also filter by property type
+            # For non-property funding types, property_type may be N/A or not set
+            property_based_types = [
+                "development_finance", "senior_debt", "commercial_mortgage", 
+                "mortgage", "equity"
+            ]
+            if project.funding_type in property_based_types:
+                qs = qs.filter(
+                    Q(property_type=project.property_type) | 
+                    Q(property_type__isnull=True) | 
+                    Q(property_type="n/a")
+                )
+            # Filter by loan amount and term
+            qs = qs.filter(
+                min_loan_amount__lte=project.loan_amount_required,
+                max_loan_amount__gte=project.loan_amount_required,
+            )
+            
+            # Only filter by term if term_required_months is set
+            if project.term_required_months:
+                qs = qs.filter(
+                    term_min_months__lte=project.term_required_months,
+                    term_max_months__gte=project.term_required_months,
+                )
+            
+            # Filter by LTV ratio if project has a calculable LTV
+            project_ltv = project.calculate_ltv_ratio()
             if project_ltv is not None:
-                # Calculate how close the product's max LTV is to the project's LTV
-                # Products with max LTV closer to project LTV are preferred
-                ltv_diff = abs(float(product.max_ltv_ratio) - project_ltv)
-                ltv_score = ltv_diff * 1000  # Weight LTV difference (scale to match loan diff magnitude)
+                # Only include products where the product's max LTV is >= project's LTV
+                qs = qs.filter(max_ltv_ratio__gte=Decimal(str(project_ltv)))
             
-            # Combined score (loan amount difference + LTV difference)
-            return loan_diff + ltv_score
+            # Compute match score (combination of loan amount proximity and LTV fit)
+            def score(product: Product) -> float:
+                # Loan amount match score (lower is better)
+                median = (product.min_loan_amount + product.max_loan_amount) / 2
+                loan_diff = abs(float(median) - float(project.loan_amount_required))
+                
+                # LTV match score (prefer products with max LTV closer to project LTV)
+                ltv_score = 0.0
+                if project_ltv is not None:
+                    # Calculate how close the product's max LTV is to the project's LTV
+                    # Products with max LTV closer to project LTV are preferred
+                    ltv_diff = abs(float(product.max_ltv_ratio) - project_ltv)
+                    ltv_score = ltv_diff * 1000  # Weight LTV difference (scale to match loan diff magnitude)
+                
+                # Combined score (loan amount difference + LTV difference)
+                return loan_diff + ltv_score
 
-        sorted_products = sorted(qs, key=score)
-        from products.serializers import ProductSerializer
+            sorted_products = sorted(qs, key=score)
+            from products.serializers import ProductSerializer
 
-        serializer = ProductSerializer(sorted_products, many=True, context={"request": request})
-        return Response(serializer.data)
+            serializer = ProductSerializer(sorted_products, many=True, context={"request": request})
+            return Response(serializer.data)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in ProjectViewSet.matched_products: {e}", exc_info=True)
+            return Response(
+                {"error": f"Failed to load matched products: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     @action(detail=True, methods=["post"], url_path="submit-enquiry")
     def submit_enquiry(self, request, pk: str | None = None):

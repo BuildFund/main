@@ -10,9 +10,11 @@ from __future__ import annotations
 from django.contrib import admin
 from django.urls import include, path
 from accounts.auth_views import CustomObtainAuthToken
+from buildfund_app.api_views import api_root
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/", api_root, name="api-root"),
     path("api/auth/token/", CustomObtainAuthToken.as_view(), name="api-token"),
     path("api/accounts/", include("accounts.urls")),
     path("api/borrowers/", include("borrowers.urls")),
@@ -27,4 +29,6 @@ urlpatterns = [
     path("api/verification/", include("verification.urls")),
     path("api/messaging/", include("messaging.urls")),
     path("api/onboarding/", include("onboarding.urls")),
+    path("api/consultants/", include("consultants.urls")),
+    path("api/funding-requests/", include("funding_requests.urls")),
 ]

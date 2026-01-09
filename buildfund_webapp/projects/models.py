@@ -13,9 +13,28 @@ class Project(models.Model):
     """Represents a property development project submitted by a borrower."""
 
     FUNDING_TYPES = [
-        ("mortgage", "Mortgage Finance"),
+        # Property & Development Finance (Primary)
+        ("development_finance", "Development Finance"),
         ("senior_debt", "Senior Debt/Development Finance"),
+        ("commercial_mortgage", "Commercial Mortgages"),
+        ("mortgage", "Mortgage Finance"),
         ("equity", "Equity Finance"),
+        # Alternative Business Finance
+        ("revenue_based", "Revenue Based Funding"),
+        ("merchant_cash_advance", "Merchant Cash Advance"),
+        ("term_loan_p2p", "Term Loans (Peer-to-Peer)"),
+        ("bank_overdraft", "Bank Overdraft"),
+        ("business_credit_card", "Business Credit Cards"),
+        # Asset-Based Finance
+        ("ip_funding", "Intellectual Property (IP) Funding"),
+        ("stock_finance", "Stock Finance"),
+        ("asset_finance", "Asset Finance"),
+        ("factoring", "Factoring / Invoice Discounting"),
+        # Trade & Export Finance
+        ("trade_finance", "Trade Finance"),
+        ("export_finance", "Export Finance"),
+        # Public Sector
+        ("public_sector_startup", "Public Sector Funding (Start Up Loan)"),
     ]
     PROPERTY_TYPES = [
         ("residential", "Residential"),
@@ -54,7 +73,7 @@ class Project(models.Model):
         null=True,
         help_text="Unique short identifier for this project (auto-generated)"
     )
-    funding_type = models.CharField(max_length=20, choices=FUNDING_TYPES)
+    funding_type = models.CharField(max_length=30, choices=FUNDING_TYPES)
     property_type = models.CharField(max_length=20, choices=PROPERTY_TYPES)
     address = models.CharField(max_length=255)
     town = models.CharField(max_length=100)
@@ -68,7 +87,7 @@ class Project(models.Model):
     planning_reference = models.CharField(max_length=100, blank=True)
     planning_description = models.TextField(blank=True)
     loan_amount_required = models.DecimalField(max_digits=15, decimal_places=2)
-    term_required_months = models.PositiveIntegerField()
+    term_required_months = models.PositiveIntegerField(null=True, blank=True, help_text="Optional for some funding types")
     repayment_method = models.CharField(max_length=20, choices=REPAYMENT_METHODS)
     unit_counts = models.JSONField(default=dict)
     gross_internal_area = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)

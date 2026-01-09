@@ -12,14 +12,16 @@ from django.db import models
 
 
 class Role(models.Model):
-    """Represents a system role (Borrower, Lender, Admin)."""
+    """Represents a system role (Borrower, Lender, Consultant, Admin)."""
 
     BORROWER = "Borrower"
     LENDER = "Lender"
+    CONSULTANT = "Consultant"
     ADMIN = "Admin"
     ROLE_CHOICES = [
         (BORROWER, BORROWER),
         (LENDER, LENDER),
+        (CONSULTANT, CONSULTANT),
         (ADMIN, ADMIN),
     ]
 

@@ -61,6 +61,10 @@ INSTALLED_APPS = [
     # Verification and messaging
     "verification",
     "messaging",
+    # Consultants/Solicitors
+    "consultants",
+    # Funding Requests (non-property funding)
+    "funding_requests",
 ]
 
 MIDDLEWARE = [

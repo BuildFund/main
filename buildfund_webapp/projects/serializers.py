@@ -73,6 +73,8 @@ class ProjectSerializer(serializers.ModelSerializer):
     
     def validate_term_required_months(self, value):
         """Validate term is reasonable."""
+        if value is None:
+            return None  # Allow None for non-property funding types
         try:
             value = int(validate_numeric_input(value, min_value=1, max_value=600))  # Max 50 years
         except Exception as e:

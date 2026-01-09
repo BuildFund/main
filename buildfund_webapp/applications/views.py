@@ -6,10 +6,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils import timezone
 
-from .models import Application, ApplicationStatusHistory, ApplicationDocument
+from .models import Application, ApplicationStatusHistory, ApplicationDocument, ApplicationUnderwriting
 from .serializers import ApplicationSerializer
 from .analysis import BorrowerAnalysisReport
-from documents.models import Document
+from documents.models import Document, DocumentType
+from documents.services import DocumentValidationService, DocumentAIAssessmentService
 from rest_framework.parsers import MultiPartParser, FormParser
 
 
@@ -21,19 +22,39 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        # Lenders see their own applications/enquiries; borrowers see applications/enquiries for their projects
-        if hasattr(user, "lenderprofile"):
-            return Application.objects.filter(lender=user.lenderprofile).select_related(
+        try:
+            # Lenders see their own applications/enquiries; borrowers see applications/enquiries for their projects
+            if hasattr(user, "lenderprofile"):
+                return Application.objects.filter(lender=user.lenderprofile).select_related(
+                    "project", "project__borrower", "project__borrower__user", "product", "lender", "lender__user"
+                )
+            if hasattr(user, "borrowerprofile"):
+                return Application.objects.filter(project__borrower=user.borrowerprofile).select_related(
+                    "project", "project__borrower", "project__borrower__user", "product", "lender", "lender__user"
+                )
+            # admins see all
+            return Application.objects.all().select_related(
                 "project", "project__borrower", "project__borrower__user", "product", "lender", "lender__user"
             )
-        if hasattr(user, "borrowerprofile"):
-            return Application.objects.filter(project__borrower=user.borrowerprofile).select_related(
-                "project", "project__borrower", "project__borrower__user", "product", "lender", "lender__user"
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in ApplicationViewSet.get_queryset: {e}", exc_info=True)
+            # Return empty queryset on error
+            return Application.objects.none()
+    
+    def list(self, request, *args, **kwargs):
+        """List applications with error handling."""
+        try:
+            return super().list(request, *args, **kwargs)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in ApplicationViewSet.list: {e}", exc_info=True)
+            return Response(
+                {"error": f"Failed to load applications: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        # admins see all
-        return Application.objects.all().select_related(
-            "project", "project__borrower", "project__borrower__user", "product", "lender", "lender__user"
-        )
 
     def get_permissions(self):
         # For create: borrowers can create enquiries, lenders can create applications
@@ -255,10 +276,10 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             )
         
         if request.method == "GET":
-            # List documents
+            # List documents with validation and assessment info
             app_docs = ApplicationDocument.objects.filter(
                 application=application
-            ).select_related("document", "uploaded_by").order_by("-uploaded_at")
+            ).select_related("document", "document__document_type", "uploaded_by").order_by("-uploaded_at")
             
             documents_data = [
                 {
@@ -270,6 +291,12 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     "description": ad.description,
                     "uploaded_by": ad.uploaded_by.username if ad.uploaded_by else "Unknown",
                     "uploaded_at": ad.uploaded_at.isoformat(),
+                    "document_type": ad.document.document_type.name if ad.document.document_type else None,
+                    "document_category": ad.document.document_type.category if ad.document.document_type else None,
+                    "validation_status": ad.document.validation_status,
+                    "validation_score": ad.document.validation_score,
+                    "validation_notes": ad.document.validation_notes,
+                    "is_required": ad.is_required,
                 }
                 for ad in app_docs
             ]
@@ -277,9 +304,11 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             return Response(documents_data)
         
         elif request.method == "POST":
-            # Upload new document
+            # Upload new document with validation and AI assessment
             files = request.FILES.getlist("files")
             description = request.data.get("description", "")
+            document_type_id = request.data.get("document_type_id")
+            is_required = request.data.get("is_required", "false").lower() == "true"
             
             if not files:
                 return Response(
@@ -287,8 +316,23 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
+            # Get document type if provided
+            document_type = None
+            if document_type_id:
+                try:
+                    document_type = DocumentType.objects.get(id=document_type_id)
+                except DocumentType.DoesNotExist:
+                    pass
+            
+            # Initialize services
+            validation_service = DocumentValidationService()
+            ai_service = DocumentAIAssessmentService()
+            
             uploaded_docs = []
             for file in files:
+                # Validate document
+                validation_result = validation_service.validate_document(file, document_type)
+                
                 # Create document record
                 document = Document.objects.create(
                     owner=user,
@@ -297,7 +341,21 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     file_type=file.content_type or "application/octet-stream",
                     upload_path=f"applications/{application.id}/{file.name}",
                     description=description,
+                    document_type=document_type,
+                    validation_status="valid" if validation_result["valid"] else "invalid",
+                    validation_score=validation_result["score"],
+                    validation_notes=validation_result["notes"],
                 )
+                
+                # Perform AI assessment (async in production)
+                try:
+                    ai_assessment = ai_service.assess_document(document)
+                    document.ai_assessment = ai_assessment
+                    document.ai_assessed_at = timezone.now()
+                    document.save()
+                except Exception as e:
+                    print(f"Error in AI assessment: {e}")
+                    # Continue even if AI assessment fails
                 
                 # Link to application
                 app_doc = ApplicationDocument.objects.create(
@@ -305,6 +363,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     document=document,
                     uploaded_by=user,
                     description=description,
+                    is_required=is_required,
                 )
                 
                 uploaded_docs.append({
@@ -316,7 +375,19 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     "description": app_doc.description,
                     "uploaded_by": user.username,
                     "uploaded_at": app_doc.uploaded_at.isoformat(),
+                    "document_type": document.document_type.name if document.document_type else None,
+                    "validation_status": document.validation_status,
+                    "validation_score": document.validation_score,
+                    "validation_notes": document.validation_notes,
                 })
+            
+            # Trigger application assessment if documents uploaded
+            if uploaded_docs:
+                try:
+                    self._assess_application(application)
+                except Exception as e:
+                    print(f"Error assessing application: {e}")
+                    # Don't fail the upload if assessment fails
             
             return Response({
                 "message": f"Successfully uploaded {len(uploaded_docs)} document(s)",
@@ -361,3 +432,353 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 {"error": "Document not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
+    
+    def _assess_application(self, application):
+        """Assess application using AI based on all documents."""
+        from documents.services import DocumentAIAssessmentService
+        
+        # Get all documents for this application
+        app_docs = ApplicationDocument.objects.filter(
+            application=application
+        ).select_related("document")
+        
+        documents = [ad.document for ad in app_docs]
+        
+        # Perform AI assessment
+        ai_service = DocumentAIAssessmentService()
+        assessment_result = ai_service.assess_application(application, documents)
+        
+        # Create or update underwriting record
+        underwriting, created = ApplicationUnderwriting.objects.get_or_create(
+            application=application,
+            defaults={
+                "risk_score": assessment_result["risk_score"],
+                "recommendation": assessment_result["recommendation"],
+                "assessment_summary": assessment_result["summary"],
+                "key_findings": assessment_result["key_findings"],
+                "strengths": assessment_result["strengths"],
+                "concerns": assessment_result["concerns"],
+                "recommendations": assessment_result["recommendations"],
+                "documents_analyzed": len(documents),
+                "documents_valid": len([d for d in documents if d.validation_status == "valid"]),
+                "documents_invalid": len([d for d in documents if d.validation_status == "invalid"]),
+                "documents_pending": len([d for d in documents if d.validation_status == "pending"]),
+                "assessment_data": assessment_result,
+            }
+        )
+        
+        if not created:
+            # Update existing assessment
+            underwriting.risk_score = assessment_result["risk_score"]
+            underwriting.recommendation = assessment_result["recommendation"]
+            underwriting.assessment_summary = assessment_result["summary"]
+            underwriting.key_findings = assessment_result["key_findings"]
+            underwriting.strengths = assessment_result["strengths"]
+            underwriting.concerns = assessment_result["concerns"]
+            underwriting.recommendations = assessment_result["recommendations"]
+            underwriting.documents_analyzed = len(documents)
+            underwriting.documents_valid = len([d for d in documents if d.validation_status == "valid"])
+            underwriting.documents_invalid = len([d for d in documents if d.validation_status == "invalid"])
+            underwriting.documents_pending = len([d for d in documents if d.validation_status == "pending"])
+            underwriting.assessment_data = assessment_result
+            underwriting.assessed_at = timezone.now()
+            underwriting.save()
+        
+        return underwriting
+    
+    @action(detail=True, methods=["post"])
+    def assess(self, request, pk=None):
+        """Trigger AI assessment of application."""
+        application = self.get_object()
+        
+        # Check permissions - only lender or admin
+        user = request.user
+        can_assess = (
+            user.is_superuser or
+            (hasattr(user, "lenderprofile") and application.lender == user.lenderprofile)
+        )
+        
+        if not can_assess:
+            return Response(
+                {"error": "You do not have permission to assess this application"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            underwriting = self._assess_application(application)
+            return Response({
+                "message": "Application assessed successfully",
+                "risk_score": underwriting.risk_score,
+                "recommendation": underwriting.recommendation,
+                "summary": underwriting.assessment_summary,
+            })
+        except Exception as e:
+            return Response(
+                {"error": f"Error assessing application: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=["get"])
+    def underwriting(self, request, pk=None):
+        """Get underwriting assessment for application."""
+        application = self.get_object()
+        
+        # Check permissions
+        user = request.user
+        can_access = (
+            user.is_superuser or
+            (hasattr(user, "lenderprofile") and application.lender == user.lenderprofile) or
+            (hasattr(user, "borrowerprofile") and application.project.borrower == user.borrowerprofile)
+        )
+        
+        if not can_access:
+            return Response(
+                {"error": "You do not have permission to view underwriting assessment"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            underwriting = application.underwriting
+            return Response({
+                "risk_score": underwriting.risk_score,
+                "recommendation": underwriting.recommendation,
+                "summary": underwriting.assessment_summary,
+                "key_findings": underwriting.key_findings,
+                "strengths": underwriting.strengths,
+                "concerns": underwriting.concerns,
+                "recommendations": underwriting.recommendations,
+                "documents_analyzed": underwriting.documents_analyzed,
+                "documents_valid": underwriting.documents_valid,
+                "documents_invalid": underwriting.documents_invalid,
+                "assessed_at": underwriting.assessed_at.isoformat(),
+            })
+        except ApplicationUnderwriting.DoesNotExist:
+            return Response({
+                "message": "No underwriting assessment available yet",
+                "risk_score": None,
+            })
+    
+    @action(detail=True, methods=["post"])
+    def give_consent(self, request, pk=None):
+        """Borrower gives consent to share information with lender."""
+        application = self.get_object()
+        
+        # Check permissions - only borrower can give consent
+        user = request.user
+        is_borrower = hasattr(user, "borrowerprofile") and application.project.borrower == user.borrowerprofile
+        
+        if not (user.is_superuser or is_borrower):
+            return Response(
+                {"error": "Only the borrower can give consent to share information"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        application.borrower_consent_given = True
+        application.borrower_consent_given_at = timezone.now()
+        application.borrower_consent_withdrawn_at = None
+        application.save()
+        
+        return Response({
+            "message": "Consent given successfully",
+            "borrower_consent_given": True,
+            "borrower_consent_given_at": application.borrower_consent_given_at.isoformat(),
+        })
+    
+    @action(detail=True, methods=["post"])
+    def withdraw_consent(self, request, pk=None):
+        """Borrower withdraws consent to share information."""
+        application = self.get_object()
+        
+        # Check permissions - only borrower can withdraw consent
+        user = request.user
+        is_borrower = hasattr(user, "borrowerprofile") and application.project.borrower == user.borrowerprofile
+        
+        if not (user.is_superuser or is_borrower):
+            return Response(
+                {"error": "Only the borrower can withdraw consent"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        application.borrower_consent_given = False
+        application.borrower_consent_withdrawn_at = timezone.now()
+        application.save()
+        
+        return Response({
+            "message": "Consent withdrawn successfully",
+            "borrower_consent_given": False,
+        })
+    
+    @action(detail=True, methods=["get"])
+    def borrower_information(self, request, pk=None):
+        """Get comprehensive borrower information for lender (only if consent given and application accepted)."""
+        application = self.get_object()
+        
+        # Check permissions - only lender can view borrower information
+        user = request.user
+        is_lender = hasattr(user, "lenderprofile") and application.lender == user.lenderprofile
+        
+        if not (user.is_superuser or is_lender):
+            return Response(
+                {"error": "Only the lender can view borrower information"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check if application is accepted
+        if application.status != "accepted":
+            return Response(
+                {"error": "Application must be accepted before viewing borrower information"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if borrower has given consent
+        if not application.borrower_consent_given:
+            return Response(
+                {"error": "Borrower has not given consent to share information"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get borrower profile
+        borrower_profile = application.project.borrower
+        borrower_user = borrower_profile.user
+        
+        # Get onboarding data
+        onboarding_data = None
+        try:
+            onboarding_data = borrower_user.onboarding_data
+        except:
+            pass
+        
+        # Get all documents for this application
+        app_docs = ApplicationDocument.objects.filter(
+            application=application
+        ).select_related("document", "document__document_type")
+        
+        documents = [
+            {
+                "id": ad.document.id,
+                "file_name": ad.document.file_name,
+                "file_size": ad.document.file_size,
+                "file_type": ad.document.file_type,
+                "document_type": ad.document.document_type.name if ad.document.document_type else None,
+                "document_category": ad.document.document_type.category if ad.document.document_type else None,
+                "description": ad.description,
+                "validation_status": ad.document.validation_status,
+                "validation_score": ad.document.validation_score,
+                "uploaded_at": ad.uploaded_at.isoformat(),
+            }
+            for ad in app_docs
+        ]
+        
+        # Get borrower's other documents (from onboarding)
+        borrower_documents = []
+        if onboarding_data:
+            borrower_documents = [
+                {
+                    "id": doc.id,
+                    "file_name": doc.file_name,
+                    "file_size": doc.file_size,
+                    "file_type": doc.file_type,
+                    "document_type": doc.document_type.name if doc.document_type else None,
+                    "uploaded_at": doc.uploaded_at.isoformat(),
+                }
+                for doc in onboarding_data.documents_uploaded.all()
+            ]
+        
+        # Compile comprehensive borrower information
+        borrower_info = {
+            # Personal Information
+            "personal": {
+                "first_name": borrower_profile.first_name,
+                "last_name": borrower_profile.last_name,
+                "date_of_birth": borrower_profile.date_of_birth.isoformat() if borrower_profile.date_of_birth else None,
+                "email": borrower_user.email,
+                "phone_number": borrower_profile.phone_number or (onboarding_data.phone_number if onboarding_data else None),
+            },
+            
+            # Contact Information
+            "contact": {
+                "address_line_1": borrower_profile.address_1 or (onboarding_data.address_line_1 if onboarding_data else None),
+                "address_line_2": borrower_profile.address_2 or (onboarding_data.address_line_2 if onboarding_data else None),
+                "city": borrower_profile.city or (onboarding_data.town if onboarding_data else None),
+                "county": borrower_profile.county or (onboarding_data.county if onboarding_data else None),
+                "postcode": borrower_profile.postcode or (onboarding_data.postcode if onboarding_data else None),
+                "country": borrower_profile.country or (onboarding_data.country if onboarding_data else "United Kingdom"),
+            },
+            
+            # Company Information
+            "company": {
+                "company_name": borrower_profile.company_name or (onboarding_data.company_name if onboarding_data else None),
+                "registration_number": borrower_profile.registration_number or (onboarding_data.company_registration_number if onboarding_data else None),
+                "trading_name": borrower_profile.trading_name,
+                "company_type": onboarding_data.company_type if onboarding_data else None,
+                "company_status": onboarding_data.company_status if onboarding_data else None,
+                "incorporation_date": onboarding_data.company_incorporation_date.isoformat() if onboarding_data and onboarding_data.company_incorporation_date else None,
+            },
+            
+            # Financial Information
+            "financial": {
+                "annual_income": float(onboarding_data.annual_income) if onboarding_data and onboarding_data.annual_income else None,
+                "employment_status": onboarding_data.employment_status if onboarding_data else None,
+                "employment_company": onboarding_data.employment_company if onboarding_data else None,
+                "employment_position": onboarding_data.employment_position if onboarding_data else None,
+                "monthly_expenses": float(onboarding_data.monthly_expenses) if onboarding_data and onboarding_data.monthly_expenses else None,
+                "existing_debts": float(onboarding_data.existing_debts) if onboarding_data and onboarding_data.existing_debts else None,
+                "total_assets": float(onboarding_data.total_assets) if onboarding_data and onboarding_data.total_assets else None,
+                "source_of_funds": onboarding_data.source_of_funds if onboarding_data else None,
+            },
+            
+            # KYC Information
+            "kyc": {
+                "nationality": onboarding_data.nationality if onboarding_data else None,
+                "national_insurance_number": onboarding_data.national_insurance_number if onboarding_data else None,
+            },
+            
+            # Directors Information
+            "directors": onboarding_data.directors_data if onboarding_data and onboarding_data.directors_data else [],
+            
+            # Documents
+            "documents": {
+                "application_documents": documents,
+                "borrower_documents": borrower_documents,
+            },
+            
+            # Project Information
+            "project": {
+                "project_reference": application.project.project_reference,
+                "address": application.project.address,
+                "town": application.project.town,
+                "county": application.project.county,
+                "postcode": application.project.postcode,
+                "loan_amount_required": float(application.project.loan_amount_required),
+                "property_type": application.project.property_type,
+                "funding_type": application.project.funding_type,
+            },
+            
+            # Application Details
+            "application": {
+                "loan_amount": float(application.proposed_loan_amount),
+                "interest_rate": float(application.proposed_interest_rate) if application.proposed_interest_rate else None,
+                "term_months": application.proposed_term_months,
+                "ltv_ratio": float(application.proposed_ltv_ratio) if application.proposed_ltv_ratio else None,
+            },
+            
+            # Underwriting Assessment
+            "underwriting": None,
+        }
+        
+        # Add underwriting if available
+        try:
+            underwriting = application.underwriting
+            borrower_info["underwriting"] = {
+                "risk_score": underwriting.risk_score,
+                "recommendation": underwriting.recommendation,
+                "summary": underwriting.assessment_summary,
+                "key_findings": underwriting.key_findings,
+                "strengths": underwriting.strengths,
+                "concerns": underwriting.concerns,
+                "recommendations": underwriting.recommendations,
+            }
+        except:
+            pass
+        
+        return Response(borrower_info)
