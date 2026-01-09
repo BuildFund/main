@@ -33,10 +33,30 @@ function Chatbot({ onComplete, onClose }) {
       setCurrentQuestion(res.data.question);
       setProgress(res.data.progress);
       
+      // Use conversation history from backend (includes welcome back message if resuming)
       if (res.data.conversation_history && res.data.conversation_history.length > 0) {
-        setMessages(res.data.conversation_history);
+        const messages = [...res.data.conversation_history];
+        const isResuming = res.data.is_resuming;
+        
+        // If resuming, ensure the current question is shown (it might not be in history yet)
+        if (isResuming && res.data.question?.question) {
+          // Check if the last bot message is the current question
+          const lastBotMessage = [...messages].reverse().find(msg => msg.type === 'bot');
+          const questionAlreadyShown = lastBotMessage && lastBotMessage.message === res.data.question.question;
+          
+          if (!questionAlreadyShown) {
+            // Add the current question as the latest bot message so user knows what to answer
+            messages.push({
+              type: 'bot',
+              message: res.data.question.question,
+              timestamp: new Date().toISOString(),
+            });
+          }
+        }
+        
+        setMessages(messages);
       } else {
-        // Add welcome message
+        // New conversation - add welcome message
         setMessages([{
           type: 'bot',
           message: res.data.question?.question || 'Welcome! Let\'s get started.',
@@ -45,6 +65,12 @@ function Chatbot({ onComplete, onClose }) {
       }
     } catch (err) {
       console.error('Failed to start conversation:', err);
+      const errorMessage = err.response?.data?.error || err.response?.data?.detail || err.message || 'Failed to start conversation. Please try again.';
+      setMessages([{
+        type: 'bot',
+        message: `Sorry, I encountered an error: ${errorMessage}. Please refresh the page and try again.`,
+        timestamp: new Date().toISOString(),
+      }]);
     } finally {
       setLoading(false);
     }
@@ -88,9 +114,10 @@ function Chatbot({ onComplete, onClose }) {
       }
     } catch (err) {
       console.error('Failed to send message:', err);
+      const errorMessage = err.response?.data?.error || err.response?.data?.detail || err.message || 'An error occurred';
       setMessages(prev => [...prev, {
         type: 'bot',
-        message: 'Sorry, I encountered an error. Please try again.',
+        message: `Sorry, I encountered an error: ${errorMessage}. Please try again.`,
         timestamp: new Date().toISOString(),
       }]);
     }
@@ -129,9 +156,10 @@ function Chatbot({ onComplete, onClose }) {
       })
       .catch(err => {
         console.error('File upload failed:', err);
+        const errorMessage = err.response?.data?.error || err.response?.data?.detail || err.message || 'File upload failed';
         setMessages(prev => [...prev, {
           type: 'bot',
-          message: 'Sorry, file upload failed. Please try again.',
+          message: `Sorry, file upload failed: ${errorMessage}. Please try again.`,
           timestamp: new Date().toISOString(),
         }]);
         setUploading(false);

@@ -75,6 +75,12 @@ class OnboardingViewSet(viewsets.ViewSet):
                     current_step=progress.current_step or "welcome",
                 )
             
+            # Check if there's existing progress
+            has_existing_progress = (
+                progress.completion_percentage > 0 or
+                (session.conversation_history and len(session.conversation_history) > 0)
+            )
+            
             # Get next question
             steps = self.chatbot_service.get_steps_for_role(user_role)
             current_step_index = steps.index(session.current_step) if session.current_step in steps else 0
@@ -97,11 +103,42 @@ class OnboardingViewSet(viewsets.ViewSet):
                     "type": "text",
                 }
             
+            # Handle conversation history - show welcome back message if resuming
+            conversation_history = list(session.conversation_history) if session.conversation_history else []
+            
+            if has_existing_progress and conversation_history:
+                # Check if welcome back message already exists (to avoid duplicates)
+                has_welcome_back = any(
+                    msg.get("message", "").startswith("Welcome back") 
+                    for msg in conversation_history 
+                    if msg.get("type") == "bot"
+                )
+                
+                if not has_welcome_back:
+                    # Prepend welcome back message
+                    welcome_back_msg = {
+                        "type": "bot",
+                        "message": f"Welcome back! 👋 You've completed {progress.completion_percentage}% of your profile. Let's continue where we left off.",
+                        "timestamp": timezone.now().isoformat(),
+                    }
+                    conversation_history.insert(0, welcome_back_msg)
+                
+                # Don't include the current question in history yet - it will be shown by the frontend
+                # The frontend will add it to the messages when displaying
+            elif not conversation_history:
+                # New conversation - add welcome message
+                conversation_history = [{
+                    "type": "bot",
+                    "message": question_data.get("question", "Welcome! Let's get started."),
+                    "timestamp": timezone.now().isoformat(),
+                }]
+            
             return Response({
                 "session_id": session.session_id,
                 "question": question_data,
                 "progress": OnboardingProgressSerializer(progress).data,
-                "conversation_history": session.conversation_history or [],
+                "conversation_history": conversation_history,
+                "is_resuming": has_existing_progress,
             })
         
         elif request.method == "POST":
@@ -143,8 +180,24 @@ class OnboardingViewSet(viewsets.ViewSet):
             })
             
             # Process response based on current step
+            # Use session.current_step instead of step from request (more reliable)
+            current_step = session.current_step or step or "welcome"
             collected_data = session.collected_data or {}
-            next_step = self._process_response(step, message, collected_data, user_role, progress, user)
+            
+            try:
+                next_step = self._process_response(current_step, message, collected_data, user_role, progress, user)
+            except Exception as e:
+                # Log error and return a safe response
+                import traceback
+                print(f"Error processing response: {e}")
+                print(traceback.format_exc())
+                return Response({
+                    "error": f"Error processing your response: {str(e)}",
+                    "session_id": session.session_id,
+                    "question": self.chatbot_service.get_next_question(current_step, user_role, collected_data),
+                    "progress": OnboardingProgressSerializer(progress).data,
+                    "conversation_history": session.conversation_history,
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # Update session
             session.current_step = next_step
@@ -153,14 +206,30 @@ class OnboardingViewSet(viewsets.ViewSet):
             session.save()
             
             # Update progress
-            self._update_progress(progress, collected_data, user_role, user)
+            try:
+                self._update_progress(progress, collected_data, user_role, user)
+            except Exception as e:
+                import traceback
+                print(f"Error updating progress: {e}")
+                print(traceback.format_exc())
+                # Continue anyway - progress update failure shouldn't block the response
             
             # Get next question
-            question_data = self.chatbot_service.get_next_question(
-                next_step,
-                user_role,
-                collected_data
-            )
+            try:
+                question_data = self.chatbot_service.get_next_question(
+                    next_step,
+                    user_role,
+                    collected_data
+                )
+            except Exception as e:
+                import traceback
+                print(f"Error getting next question: {e}")
+                print(traceback.format_exc())
+                question_data = {
+                    "question": "I'm ready for your next response.",
+                    "step": next_step,
+                    "type": "text",
+                }
             
             # Add bot response to conversation
             if question_data:
@@ -181,7 +250,15 @@ class OnboardingViewSet(viewsets.ViewSet):
     def _process_response(self, step: str, message: str, collected_data: dict, user_role: str, progress: OnboardingProgress, user) -> str:
         """Process user response and update collected data."""
         steps = self.chatbot_service.get_steps_for_role(user_role)
-        current_index = steps.index(step) if step in steps else 0
+        if not steps:
+            return "complete"  # No steps defined, mark as complete
+        
+        # Safely get current index
+        try:
+            current_index = steps.index(step) if step in steps else 0
+        except (ValueError, AttributeError):
+            current_index = 0
+            step = steps[0] if steps else "complete"
         
         # Handle special responses
         message_lower = message.lower().strip()
@@ -219,16 +296,90 @@ class OnboardingViewSet(viewsets.ViewSet):
         
         elif step == "address_collection":
             collected_data["postcode"] = message
-            # Verify address
-            addr_data = collected_data.get("address_data", {})
-            verification = self.address_service.verify_address(
-                address_line_1=addr_data.get("address_line_1", ""),
-                postcode=message,
-                town=addr_data.get("town", ""),
-            )
-            collected_data["address_verification_data"] = verification
-            if verification.get("verified"):
+            # Use postcode lookup to get address details
+            try:
+                import requests
+                from django.conf import settings
+                
+                api_key = settings.GOOGLE_API_KEY
+                if api_key:
+                    # Call Google Geocoding API for postcode lookup
+                    url = "https://maps.googleapis.com/maps/api/geocode/json"
+                    params = {
+                        "address": f"{message}, UK",
+                        "key": api_key,
+                        "region": "gb",
+                    }
+                    response = requests.get(url, params=params, timeout=10)
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                    if data.get("status") == "OK" and data.get("results"):
+                        result = data["results"][0]
+                        formatted_address = result.get("formatted_address", "")
+                        
+                        # Extract address components
+                        components = {}
+                        for component in result.get("address_components", []):
+                            types = component.get("types", [])
+                            if "postal_town" in types or "locality" in types:
+                                components["town"] = component.get("long_name")
+                            elif "administrative_area_level_2" in types:
+                                components["county"] = component.get("long_name")
+                            elif "postal_code" in types:
+                                components["postcode"] = component.get("long_name")
+                            elif "country" in types:
+                                components["country"] = component.get("long_name")
+                            elif "street_number" in types:
+                                components["street_number"] = component.get("long_name")
+                            elif "route" in types:
+                                components["route"] = component.get("long_name")
+                        
+                        # Store verification data with formatted address
+                        collected_data["address_verification_data"] = {
+                            "verified": True,
+                            "formatted_address": formatted_address,
+                            "components": components,
+                            "confidence_score": 0.9,
+                            "message": "Address found via postcode lookup",
+                        }
+                        
+                        # Store address components in collected_data for later use
+                        if components.get("town"):
+                            collected_data["town"] = components["town"]
+                        if components.get("county"):
+                            collected_data["county"] = components["county"]
+                        
+                        return "address_verification"
+                    else:
+                        # Postcode lookup failed
+                        collected_data["address_verification_data"] = {
+                            "verified": False,
+                            "formatted_address": None,
+                            "message": f"Could not find address for postcode: {data.get('status', 'Unknown error')}",
+                        }
+                else:
+                    # No API key
+                    collected_data["address_verification_data"] = {
+                        "verified": False,
+                        "formatted_address": None,
+                        "message": "Address verification service not configured",
+                    }
+            except Exception as e:
+                import traceback
+                print(f"Error in postcode lookup: {e}")
+                print(traceback.format_exc())
+                collected_data["address_verification_data"] = {
+                    "verified": False,
+                    "formatted_address": None,
+                    "message": f"Error looking up address: {str(e)}",
+                }
+            
+            # If we got a formatted address, go to verification step
+            if collected_data.get("address_verification_data", {}).get("verified"):
                 return "address_verification"
+            
+            # Otherwise, continue to next step
             return steps[current_index + 1] if current_index < len(steps) - 1 else "complete"
         
         elif step == "company_collection":
@@ -247,28 +398,37 @@ class OnboardingViewSet(viewsets.ViewSet):
             return steps[current_index + 1]
         return "complete"
     
-    def _update_progress(self, progress: OnboardingProgress, collected_data: dict, user_role: str):
+    def _update_progress(self, progress: OnboardingProgress, collected_data: dict, user_role: str, user=None):
         """Update onboarding progress based on collected data."""
-        # Check what's been collected
-        if collected_data.get("first_name") and collected_data.get("last_name"):
-            progress.profile_complete = True
+        if not collected_data:
+            return
         
-        if collected_data.get("phone_number"):
-            progress.contact_complete = True
-        
-        if collected_data.get("postcode") and collected_data.get("address_verification_data", {}).get("verified"):
-            progress.address_complete = True
-            progress.address_verified = True
-        
-        if collected_data.get("company_registration_number") and collected_data.get("company_verification_data", {}).get("verified"):
-            progress.company_complete = True
-            progress.company_verified = True
-        
-        if collected_data.get("annual_income"):
-            progress.financial_complete = True
-        
-        # Calculate overall progress
-        progress.calculate_progress()
+        try:
+            # Check what's been collected
+            if collected_data.get("first_name") and collected_data.get("last_name"):
+                progress.profile_complete = True
+            
+            if collected_data.get("phone_number"):
+                progress.contact_complete = True
+            
+            if collected_data.get("postcode") and collected_data.get("address_verification_data", {}).get("verified"):
+                progress.address_complete = True
+                progress.address_verified = True
+            
+            if collected_data.get("company_registration_number") and collected_data.get("company_verification_data", {}).get("verified"):
+                progress.company_complete = True
+                progress.company_verified = True
+            
+            if collected_data.get("annual_income"):
+                progress.financial_complete = True
+            
+            # Calculate overall progress
+            progress.calculate_progress()
+        except Exception as e:
+            import traceback
+            print(f"Error in _update_progress: {e}")
+            print(traceback.format_exc())
+            # Don't raise - just log the error
     
     @action(detail=False, methods=["post"])
     def save_data(self, request):

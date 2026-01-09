@@ -351,16 +351,18 @@ class OnboardingChatbotService:
         # Replace placeholders in question
         if "{formatted_address}" in question and "address_verification_data" in collected_data:
             addr_data = collected_data.get("address_verification_data", {})
-            question = question.replace("{formatted_address}", addr_data.get("formatted_address", "the address"))
+            formatted_addr = addr_data.get("formatted_address") or "the address"
+            question = question.replace("{formatted_address}", str(formatted_addr))
         
         if "{company_name}" in question and "company_verification_data" in collected_data:
             comp_data = collected_data.get("company_verification_data", {})
             comp_info = comp_data.get("company_info", {})
-            question = question.replace("{company_name}", comp_info.get("company_name", "the company"))
+            company_name = comp_info.get("company_name") or "the company"
+            question = question.replace("{company_name}", str(company_name))
         
         if "{summary}" in question:
             summary = self._generate_summary(collected_data, user_role)
-            question = question.replace("{summary}", summary)
+            question = question.replace("{summary}", str(summary) if summary else "No data collected yet.")
         
         return {
             **question_template,
@@ -369,21 +371,33 @@ class OnboardingChatbotService:
     
     def _generate_summary(self, collected_data: Dict[str, Any], user_role: str) -> str:
         """Generate a summary of collected data for review."""
+        if not collected_data:
+            return "No data collected yet."
+        
         summary_parts = []
         
-        if collected_data.get("first_name") and collected_data.get("last_name"):
-            summary_parts.append(f"Name: {collected_data['first_name']} {collected_data['last_name']}")
+        first_name = collected_data.get("first_name")
+        last_name = collected_data.get("last_name")
+        if first_name and last_name:
+            summary_parts.append(f"Name: {first_name} {last_name}")
         
-        if collected_data.get("phone_number"):
-            summary_parts.append(f"Phone: {collected_data['phone_number']}")
+        phone_number = collected_data.get("phone_number")
+        if phone_number:
+            summary_parts.append(f"Phone: {phone_number}")
         
-        if collected_data.get("postcode"):
-            summary_parts.append(f"Postcode: {collected_data['postcode']}")
+        postcode = collected_data.get("postcode")
+        if postcode:
+            summary_parts.append(f"Postcode: {postcode}")
         
-        if collected_data.get("company_registration_number"):
-            summary_parts.append(f"Company: {collected_data['company_registration_number']}")
+        company_reg = collected_data.get("company_registration_number")
+        if company_reg:
+            summary_parts.append(f"Company: {company_reg}")
         
-        if collected_data.get("annual_income"):
-            summary_parts.append(f"Income: £{collected_data['annual_income']:,}")
+        annual_income = collected_data.get("annual_income")
+        if annual_income:
+            try:
+                summary_parts.append(f"Income: £{float(annual_income):,.0f}")
+            except (ValueError, TypeError):
+                summary_parts.append(f"Income: {annual_income}")
         
         return "\n".join(summary_parts) if summary_parts else "No data collected yet."
