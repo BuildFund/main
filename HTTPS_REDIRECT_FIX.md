@@ -25,8 +25,8 @@ Django security settings were forcing HTTPS redirects even in development:
 2. Restart it:
    ```powershell
    cd "C:\Users\paul-\OneDrive - BARE Capital Ltd\BARE Drive\10.0 BUILDFUND\1.0 Website Dev\GitHub\buildfund_webapp"
-   $env:GOOGLE_API_KEY="AIzaSyAUr1qD0EgEgOci3afOQ5eXPMa74gT5kU4"
-   $env:HMRC_API_KEY="78c822f6-c88d-4502-a15b-80f4597b7c28"
+   $env:GOOGLE_API_KEY="[YOUR_GOOGLE_API_KEY_HERE]"
+   $env:HMRC_API_KEY="[YOUR_HMRC_API_KEY_HERE]"
    $env:OPENAI_API_KEY="[YOUR_OPENAI_API_KEY_HERE]"
    python manage.py runserver
    ```

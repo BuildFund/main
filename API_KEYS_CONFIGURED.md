@@ -3,7 +3,7 @@
 ## ✅ Configured API Keys
 
 ### Google Maps API Key
-**Key**: `AIzaSyAUr1qD0EgEgOci3afOQ5eXPMa74gT5kU4`
+**Key**: `[YOUR_GOOGLE_API_KEY_HERE]`
 
 **Usage**:
 - Postcode lookup (`/api/mapping/postcode-lookup/`)
@@ -14,7 +14,7 @@
 **Status**: ✅ Configured in settings (can be overridden via `GOOGLE_API_KEY` environment variable)
 
 ### HMRC/Companies House API Key
-**Key**: `78c822f6-c88d-4502-a15b-80f4597b7c28`
+**Key**: `[YOUR_HMRC_API_KEY_HERE]`
 
 **Usage**:
 - Company verification (`/api/verification/company/verify/`)
@@ -29,8 +29,8 @@
 Create a `.env` file in `buildfund_webapp/` directory:
 
 ```bash
-GOOGLE_API_KEY=AIzaSyAUr1qD0EgEgOci3afOQ5eXPMa74gT5kU4
-HMRC_API_KEY=78c822f6-c88d-4502-a15b-80f4597b7c28
+GOOGLE_API_KEY=[YOUR_GOOGLE_API_KEY_HERE]
+HMRC_API_KEY=[YOUR_HMRC_API_KEY_HERE]
 ```
 
 Then use a package like `python-dotenv` to load it, or set them in your deployment environment.
@@ -46,12 +46,12 @@ The keys are currently configured directly in the code:
 Set in your system environment:
 ```bash
 # Windows PowerShell
-$env:GOOGLE_API_KEY="AIzaSyAUr1qD0EgEgOci3afOQ5eXPMa74gT5kU4"
-$env:HMRC_API_KEY="78c822f6-c88d-4502-a15b-80f4597b7c28"
+$env:GOOGLE_API_KEY="[YOUR_GOOGLE_API_KEY_HERE]"
+$env:HMRC_API_KEY="[YOUR_HMRC_API_KEY_HERE]"
 
 # Linux/Mac
-export GOOGLE_API_KEY="AIzaSyAUr1qD0EgEgOci3afOQ5eXPMa74gT5kU4"
-export HMRC_API_KEY="78c822f6-c88d-4502-a15b-80f4597b7c28"
+export GOOGLE_API_KEY="[YOUR_GOOGLE_API_KEY_HERE]"
+export HMRC_API_KEY="[YOUR_HMRC_API_KEY_HERE]"
 ```
 
 ## ✅ Current Status

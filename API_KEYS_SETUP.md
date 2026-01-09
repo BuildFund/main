@@ -10,10 +10,10 @@ Create a `.env` file in the `buildfund_webapp/` directory with the following:
 
 ```bash
 # Google Maps API Key (for postcode lookup, geocoding, address autocomplete)
-GOOGLE_API_KEY=AIzaSyAUr1qD0EgEgOci3afOQ5eXPMa74gT5kU4
+GOOGLE_API_KEY=[YOUR_GOOGLE_API_KEY_HERE]
 
 # HMRC/Companies House API Key (for company and director verification)
-HMRC_API_KEY=78c822f6-c88d-4502-a15b-80f4597b7c28
+HMRC_API_KEY=[YOUR_HMRC_API_KEY_HERE]
 
 # OpenAI API Key (for AI-powered underwriting reports)
 OPENAI_API_KEY=[YOUR_OPENAI_API_KEY_HERE]
@@ -31,15 +31,15 @@ OPENAI_API_KEY=[YOUR_OPENAI_API_KEY_HERE]
 
 **Windows PowerShell:**
 ```powershell
-$env:GOOGLE_API_KEY="AIzaSyAUr1qD0EgEgOci3afOQ5eXPMa74gT5kU4"
-$env:HMRC_API_KEY="78c822f6-c88d-4502-a15b-80f4597b7c28"
+$env:GOOGLE_API_KEY="[YOUR_GOOGLE_API_KEY_HERE]"
+$env:HMRC_API_KEY="[YOUR_HMRC_API_KEY_HERE]"
 $env:OPENAI_API_KEY="[YOUR_OPENAI_API_KEY_HERE]"
 ```
 
 **Linux/Mac:**
 ```bash
-export GOOGLE_API_KEY="AIzaSyAUr1qD0EgEgOci3afOQ5eXPMa74gT5kU4"
-export HMRC_API_KEY="78c822f6-c88d-4502-a15b-80f4597b7c28"
+export GOOGLE_API_KEY="[YOUR_GOOGLE_API_KEY_HERE]"
+export HMRC_API_KEY="[YOUR_HMRC_API_KEY_HERE]"
 export OPENAI_API_KEY="[YOUR_OPENAI_API_KEY_HERE]"
 ```
 

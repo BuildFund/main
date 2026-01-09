@@ -14,8 +14,8 @@
    # In your backend terminal, press Ctrl+C to stop
    # Then restart:
    cd "C:\Users\paul-\OneDrive - BARE Capital Ltd\BARE Drive\10.0 BUILDFUND\1.0 Website Dev\GitHub\buildfund_webapp"
-   $env:GOOGLE_API_KEY="AIzaSyAUr1qD0EgEgOci3afOQ5eXPMa74gT5kU4"
-   $env:HMRC_API_KEY="78c822f6-c88d-4502-a15b-80f4597b7c28"
+   $env:GOOGLE_API_KEY="[YOUR_GOOGLE_API_KEY_HERE]"
+   $env:HMRC_API_KEY="[YOUR_HMRC_API_KEY_HERE]"
    $env:OPENAI_API_KEY="[REDACTED]-AYTNU6R97UwAkQESakesDuzsosN1ZDcn9OURwSvw_lBaYaztAkyIHlz64mDTW-h2t7vmqTqbQpT3BlbkFJ0CpGaDQVAv3Vu8wOiQ60gTJZrtgY3ggX99Kj03HM5TWVe3ylDSoAl9hcxGQ3SW5o9Kdm7bLiwA"
    python manage.py runserver
    ```

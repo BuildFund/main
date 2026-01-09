@@ -29,7 +29,7 @@
 
 ### 3. HMRC API Integration for KYC/AML ✅
 - **Location**: `buildfund_webapp/verification/`
-- **API Key**: Configured in `verification/services.py` (78c822f6-c88d-4502-a15b-80f4597b7c28)
+- **API Key**: Configured in `verification/services.py` ([YOUR_HMRC_API_KEY_HERE])
 - **Features**:
   - Company verification via Companies House API
   - Director verification with name and DOB matching
@@ -120,7 +120,7 @@ DEFAULT_FROM_EMAIL=noreply@buildfund.com
 ### HMRC API Key
 Already configured in code, but can be overridden via environment variable:
 ```bash
-HMRC_API_KEY=78c822f6-c88d-4502-a15b-80f4597b7c28
+HMRC_API_KEY=[YOUR_HMRC_API_KEY_HERE]
 ```
 
 ### Google Maps API Key

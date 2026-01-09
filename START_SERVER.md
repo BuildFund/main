@@ -22,8 +22,8 @@ The Django backend server needs to be running for the frontend to connect. Here'
 
 3. Set environment variables:
    ```powershell
-   $env:GOOGLE_API_KEY="AIzaSyAUr1qD0EgEgOci3afOQ5eXPMa74gT5kU4"
-   $env:HMRC_API_KEY="78c822f6-c88d-4502-a15b-80f4597b7c28"
+   $env:GOOGLE_API_KEY="[YOUR_GOOGLE_API_KEY_HERE]"
+   $env:HMRC_API_KEY="[YOUR_HMRC_API_KEY_HERE]"
    $env:OPENAI_API_KEY="[YOUR_OPENAI_API_KEY_HERE]"
    ```
 
@@ -36,8 +36,8 @@ The Django backend server needs to be running for the frontend to connect. Here'
 
 1. Create a `.env` file in `buildfund_webapp/` directory:
    ```bash
-   GOOGLE_API_KEY=AIzaSyAUr1qD0EgEgOci3afOQ5eXPMa74gT5kU4
-   HMRC_API_KEY=78c822f6-c88d-4502-a15b-80f4597b7c28
+   GOOGLE_API_KEY=[YOUR_GOOGLE_API_KEY_HERE]
+   HMRC_API_KEY=[YOUR_HMRC_API_KEY_HERE]
    OPENAI_API_KEY=[YOUR_OPENAI_API_KEY_HERE]
    ```
 

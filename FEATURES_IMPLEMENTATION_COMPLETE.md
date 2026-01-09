@@ -74,7 +74,7 @@ EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
 - `buildfund_webapp/verification/serializers.py` - Data serialization
 - `buildfund_webapp/verification/urls.py` - URL routing
 
-**API Key**: Already configured: `78c822f6-c88d-4502-a15b-80f4597b7c28`
+**API Key**: Already configured: `[YOUR_HMRC_API_KEY_HERE]`
 
 **Endpoints**:
 - `POST /api/verification/company/verify/` - Verify company
@@ -267,7 +267,7 @@ All migrations have been created and applied:
    ```
 
 2. **HMRC API Key** (already configured):
-   - Key: `78c822f6-c88d-4502-a15b-80f4597b7c28`
+   - Key: `[YOUR_HMRC_API_KEY_HERE]`
    - Can override with: `HMRC_API_KEY` environment variable
 
 3. **Google Maps API Key** (for postcode lookup):

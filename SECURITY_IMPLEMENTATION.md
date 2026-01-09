@@ -15,8 +15,8 @@
 **Configuration**:
 ```bash
 # Required in .env file
-GOOGLE_API_KEY=AIzaSyAUr1qD0EgEgOci3afOQ5eXPMa74gT5kU4
-HMRC_API_KEY=78c822f6-c88d-4502-a15b-80f4597b7c28
+GOOGLE_API_KEY=[YOUR_GOOGLE_API_KEY_HERE]
+HMRC_API_KEY=[YOUR_HMRC_API_KEY_HERE]
 OPENAI_API_KEY=[YOUR_OPENAI_API_KEY_HERE]
 ```
 
@@ -232,8 +232,8 @@ Create `.env` file in `buildfund_webapp/`:
 
 ```bash
 # Required API Keys (NO DEFAULTS - must be set)
-GOOGLE_API_KEY=AIzaSyAUr1qD0EgEgOci3afOQ5eXPMa74gT5kU4
-HMRC_API_KEY=78c822f6-c88d-4502-a15b-80f4597b7c28
+GOOGLE_API_KEY=[YOUR_GOOGLE_API_KEY_HERE]
+HMRC_API_KEY=[YOUR_HMRC_API_KEY_HERE]
 
 # Django Settings
 DJANGO_SECRET_KEY=your-secret-key-here

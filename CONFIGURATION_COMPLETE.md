@@ -3,7 +3,7 @@
 ## API Keys Status
 
 ### ✅ Google Maps API Key
-**Key**: `AIzaSyAUr1qD0EgEgOci3afOQ5eXPMa74gT5kU4`
+**Key**: `[YOUR_GOOGLE_API_KEY_HERE]`
 
 **Status**: ✅ Configured in `buildfund_app/settings.py`
 
@@ -14,7 +14,7 @@
 - ✅ Reverse geocoding (`/api/mapping/reverse-geocode/`)
 
 ### ✅ HMRC/Companies House API Key
-**Key**: `78c822f6-c88d-4502-a15b-80f4597b7c28`
+**Key**: `[YOUR_HMRC_API_KEY_HERE]`
 
 **Status**: ✅ Configured in `verification/services.py`
 
