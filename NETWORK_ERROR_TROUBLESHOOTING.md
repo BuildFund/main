@@ -16,7 +16,7 @@
    cd "C:\Users\paul-\OneDrive - BARE Capital Ltd\BARE Drive\10.0 BUILDFUND\1.0 Website Dev\GitHub\buildfund_webapp"
    $env:GOOGLE_API_KEY="[YOUR_GOOGLE_API_KEY_HERE]"
    $env:HMRC_API_KEY="[YOUR_HMRC_API_KEY_HERE]"
-   $env:OPENAI_API_KEY="[REDACTED]-AYTNU6R97UwAkQESakesDuzsosN1ZDcn9OURwSvw_lBaYaztAkyIHlz64mDTW-h2t7vmqTqbQpT3BlbkFJ0CpGaDQVAv3Vu8wOiQ60gTJZrtgY3ggX99Kj03HM5TWVe3ylDSoAl9hcxGQ3SW5o9Kdm7bLiwA"
+   $env:OPENAI_API_KEY="[YOUR_OPENAI_API_KEY_HERE]"
    python manage.py runserver
    ```
 
